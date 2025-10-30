@@ -41,12 +41,14 @@
 	/* a context menu item to the object's left */
 	margin-bottom: 10px;
 	margin-right: 20px;
+	transform-origin: right center;
 }
 
 .glue-contextmenu-top {
 	/* a context menu item on top of the object */
 	margin-bottom: 20px;
 	margin-right: 10px;
+	transform-origin: center bottom;
 }
 
 .glue-grid {

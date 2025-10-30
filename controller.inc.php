@@ -345,11 +345,11 @@ function parse_query_string()
 {
 	// QUERY_STRING per se seems not to be affected by magic quotes, only 
 	// the derived $_GET, $_POST etc
-	$q = $_SERVER['QUERY_STRING'];
+	$q = $_SERVER['QUERY_STRING'] ?? '';
 	$args = array();
 	$num_args = array();
 	// strip a tailing slash
-	if (substr($q, -1) == '/') {
+	if (!empty($q) && substr($q, -1) == '/') {
 		$q = substr($q, 0, -1);
 	}
 	// explode query string

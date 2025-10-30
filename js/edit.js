@@ -171,6 +171,30 @@ $.glue.contextmenu = function()
 	var prev_owner = false;
 	var top = [];
 	var veto = {};
+
+	// function to calculate icon scale based on viewport
+	var get_zoom_level = function() {
+		// When user zooms out, they can see more of the canvas
+		// We'll scale icons based on how much of the canvas is visible
+		// Default viewport is around 1200-1400px wide - at this size, icons are normal
+		// When viewport is 3000px wide (zoomed way out), icons should be 2-3x larger
+
+		var viewportWidth = $(window).width();
+		var viewportHeight = $(window).height();
+
+		// Use a baseline of 1200px viewport width
+		// At 1200px width, scale = 1.0 (normal)
+		// At 2400px width, scale = 2.0 (icons 2x bigger)
+		// At 600px width, scale = 0.5 (icons smaller - though this is unlikely when zoomed out)
+		var baselineWidth = 1200;
+		var scale = Math.max(1.0, viewportWidth / baselineWidth);
+
+		// Cap the maximum scale to avoid huge icons
+		scale = Math.min(scale, 4.0);
+
+		console.log('Viewport:', viewportWidth + 'x' + viewportHeight, 'scaling icons by:', scale.toFixed(2) + 'x');
+		return scale;
+	};
 	
 	$('.object').live('glue-deselect', function(e) {
 		// hide menu when deselecting
@@ -252,6 +276,7 @@ $.glue.contextmenu = function()
 			return false;
 		},
 		show: function(obj) {
+			console.log('contextmenu show() called');
 			if (owner) {
 				if (obj == owner) {
 					return;
@@ -355,6 +380,10 @@ $.glue.contextmenu = function()
 						}
 					}
 				}
+				// detect zoom level and calculate scale factor
+				var scale = get_zoom_level();
+				console.log('Context menu scaling with factor:', scale);
+
 				// add items to dom
 				for (var j=0; j < target.length; j++) {
 					// set crucial css properties
@@ -368,6 +397,10 @@ $.glue.contextmenu = function()
 					$(target[j].elem).css('position', 'absolute');
 					$(target[j].elem).css('visibility', 'hidden');
 					$(target[j].elem).css('z-index', '201');
+					// apply zoom-compensating scale
+					$(target[j].elem).css('transform', 'scale('+scale+')');
+					$(target[j].elem).css('-webkit-transform', 'scale('+scale+')');
+					$(target[j].elem).css('-moz-transform', 'scale('+scale+')');
 					// add to dom and move
 					$('body').append(target[j].elem);
 					if (target == top) {
@@ -396,9 +429,9 @@ $.glue.contextmenu = function()
 					}
 					// show it for real
 					if (target == left) {
-						cur_top += cur_height;
+						cur_top += cur_height * scale;
 					} else {
-						cur_left += cur_width;
+						cur_left += cur_width * scale;
 					}
 					$(target[j].elem).css('visibility', '');
 					$(target[j].elem).hide();
@@ -1901,8 +1934,8 @@ $(document).ready(function() {
 			// alt+p: show page menu
 			$.glue.menu.show('page');
 			return false;
-		} else if (e.ctrlKey && e.which == 90) {
-			// ctrl+z: show revisions browser to suggest using revisions in place of undo
+		} else if ((e.metaKey || e.ctrlKey) && e.which == 90) {
+			// cmd+z (Mac) or ctrl+z: show revisions browser to suggest using revisions in place of undo
 			if (confirm('Looking for an "undo" option?\nHOTGLUE keeps record of your recent edits - it\'s called "revisions".\nWould you like to browse through the revisions of this page?')) {
 				window.location = $.glue.base_url+'?'+$.glue.page+'/revisions';
 				return false;
