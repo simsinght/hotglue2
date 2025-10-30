@@ -7,86 +7,86 @@
  *	See the file COPYING for more details.
  */
 
-/*
-function matrixToArray(m) {
-	var c = m.substr(7);
-	c = c.substr(0, c.length - 1);
-
-	return c.split(', ');
-}
-*/
-
 $(document).ready(function() {
 	//
 	// register menu items
 	//
 	var elem;
-	elem = $('<img src="'+$.glue.base_url+'modules/transform/transform-flip.png" alt="btn" title="flip object" width="32" height="32">');
+	elem = $('<img src="'+$.glue.base_url+'modules/transform/transform-flip.png" alt="btn" title="flip object horizontally" width="32" height="32">');
 	$(elem).bind('click', function(e) {
-		var that = this;
 		var obj = $(this).data('owner');
-/*
-		if ($(obj).css('-moz-transform') != '') {
-			var o = $(obj).css('-moz-transform');
-		} else { var o = $(obj).css('-webkit-transform'); }
 
-		if (o == null || o.length < 6) {
-			o = 'matrix(1, 0, 0, 1, 0, 0)';
-		}
-		var o = matrixToArray(o);
-	
-		$(obj).transform({reflectX: true, matrix: ''+o+''}, {forceMatrix: true});
-*/
-		if ($(obj).css('-moz-transform') != '') {
-			var val = $(obj).css('-moz-transform');
-			if (val == 'matrix(-1, 0, 0, -1, 0, 0)') {
-				$(obj).css('-moz-transform', 'matrix(1, 0, 0, -1, 0, 0)');
-			} else if (val == 'matrix(1, 0, 0, -1, 0, 0)') {
-				$(obj).css('-moz-transform', 'matrix(-1, 0, 0, 1, 0, 0)');
-			} else if (val == 'matrix(-1, 0, 0, 1, 0, 0)') {
-				$(obj).css('-moz-transform', '');
-			} else {
-				$(obj).css('-moz-transform', 'matrix(-1, 0, 0, -1, 0, 0)');
+		// Parse current transform to preserve rotation
+		var currentRotation = 0;
+		var currentFlip = 1;
+		var transform = $(obj).css('transform') || $(obj).css('-webkit-transform') || $(obj).css('-moz-transform') || '';
+
+		if (transform && transform !== 'none') {
+			var values = transform.match(/matrix\(([^)]+)\)/);
+			if (values && values[1]) {
+				var parts = values[1].split(',');
+				if (parts.length >= 4) {
+					var a = parseFloat(parts[0]);
+					var b = parseFloat(parts[1]);
+					// Extract rotation and flip from matrix
+					var scaleX = Math.sqrt(a*a + b*b);
+					currentFlip = (a < 0 && b < 0) || (a < 0 && Math.abs(b) < 0.01) ? -1 : 1;
+					currentRotation = Math.round(Math.atan2(b, a) * (180/Math.PI));
+				}
 			}
 		}
-		if ($(obj).css('-webkit-transform') != '') {
-			var val = $(obj).css('-webkit-transform');
-			if (val == 'matrix(-1, 0, 0, -1, 0, 0)') {
-				$(obj).css('-webkit-transform', 'matrix(1, 0, 0, -1, 0, 0)');
-			} else if (val == 'matrix(1, 0, 0, -1, 0, 0)') {
-				$(obj).css('-webkit-transform', 'matrix(-1, 0, 0, 1, 0, 0)');
-			} else if (val == 'matrix(-1, 0, 0, 1, 0, 0)') {
-				$(obj).css('-webkit-transform', '');
-			} else {
-				$(obj).css('-webkit-transform', 'matrix(-1, 0, 0, -1, 0, 0)');
-			}
-		}
+
+		// Toggle flip
+		var newFlip = (currentFlip === -1) ? 1 : -1;
+
+		// Build combined transform
+		var transformValue = 'scaleX(' + newFlip + ') rotate(' + currentRotation + 'deg)';
+		$(obj).css('transform', transformValue);
+		$(obj).css('-webkit-transform', transformValue);
+		$(obj).css('-moz-transform', transformValue);
+
 		$.glue.object.save(obj);
-		});
+	});
 	$.glue.contextmenu.register('object', 'object-transform-flip', elem, 5);
 
-/* implement this later */
-/*	elem = $('<img src="'+$.glue.base_url+'modules/transform/transform-rotate.png" alt="btn" title="rotate object" width="32" height="32">');
+	// rotation control - drag up/down to rotate
+	elem = $('<img src="'+$.glue.base_url+'modules/transform/transform-rotate.png" alt="btn" title="rotate object (drag up/down)" width="32" height="32">');
 	$(elem).bind('mousedown', function(e) {
 		var obj = $(this).data('owner');
-		if ($(obj).css('-moz-transform') != '') {
-			var o = $(obj).css('-moz-transform');
-		} else { var o = $(obj).getAttribute('style'); }
-		if (o == null || o.length < 6) {
-			o = 'matrix(1, 0, 0, 1, 0, 0)';
-		}
-		var o = matrixToArray(o);
-		$.glue.slider(e, function(x, y) {
-			var r = y+'deg';
-			$(obj).transform({rotate: ''+r+'', matrix: ''+o+''}, {forceMatrix: true});
-//			$(obj).css('-webkit-transform','rotate('+r+')');
 
+		// Parse current transform to preserve flip
+		var currentRotation = 0;
+		var currentFlip = 1;
+		var transform = $(obj).css('transform') || $(obj).css('-webkit-transform') || $(obj).css('-moz-transform');
+
+		if (transform && transform !== 'none') {
+			var values = transform.match(/matrix\(([^)]+)\)/);
+			if (values && values[1]) {
+				var parts = values[1].split(',');
+				if (parts.length >= 4) {
+					var a = parseFloat(parts[0]);
+					var b = parseFloat(parts[1]);
+					// Extract rotation and flip from matrix
+					currentFlip = (a < 0 && b < 0) || (a < 0 && Math.abs(b) < 0.01) ? -1 : 1;
+					currentRotation = Math.round(Math.atan2(b, a) * (180/Math.PI));
+				}
+			}
+		}
+
+		$.glue.slider(e, function(x, y) {
+			// Rotate by dragging vertically - 1 pixel = 1 degree
+			var rotation = currentRotation + y;
+			// Build combined transform preserving flip
+			var transformValue = 'scaleX(' + currentFlip + ') rotate(' + rotation + 'deg)';
+			$(obj).css('transform', transformValue);
+			$(obj).css('-webkit-transform', transformValue);
+			$(obj).css('-moz-transform', transformValue);
 		}, function(x, y) {
+			// Save when done
 			$.glue.object.save(obj);
 		});
 		return false;
 	});
 	$.glue.contextmenu.register('object', 'object-transform-rotate', elem, 6);
-*/
 
 });
