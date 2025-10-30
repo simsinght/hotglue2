@@ -304,6 +304,9 @@ register_hook('alter_render_late', 'invoked late in the object rendering process
  */
 function image_render_page_early($args)
 {
+	// always add CSS for proper transparency support
+	html_add_css(base_url().'modules/image/image.css');
+
 	if ($args['edit']) {
 		if (USE_MIN_FILES) {
 			html_add_js(base_url().'modules/image/image-edit.min.js');
@@ -314,7 +317,7 @@ function image_render_page_early($args)
 			html_add_js_var('$.glue.conf.image.resizing', false);
 			log_msg('debug', 'image: disabling image resizing as gd is not available');
 		} else {
-			html_add_js_var('$.glue.conf.image.resizing', IMAGE_RESIZING);		
+			html_add_js_var('$.glue.conf.image.resizing', IMAGE_RESIZING);
 		}
 		html_add_js_var('$.glue.conf.image.upload_resize_larger', IMAGE_UPLOAD_RESIZE_LARGER);
 		html_add_js_var('$.glue.conf.image.upload_resize_to', IMAGE_UPLOAD_RESIZE_TO);
