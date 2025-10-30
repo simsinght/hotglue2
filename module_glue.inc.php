@@ -801,7 +801,7 @@ function render_object($args)
 		log_msg('debug', 'render_object: '.quot($obj['name']).' was handled by '.quot($temp[0]));
 		$temp = array_values($ret);
 		// make sure object has a tailing newline
-		if (0 < strlen($temp[0]) && substr($temp[0], -1) != "\n") {
+		if ($temp[0] !== null && $temp[0] !== '' && substr($temp[0], -1) != "\n") {
 			$temp[0] .= nl();
 		}
 		body_append($temp[0]);
@@ -1476,8 +1476,11 @@ function upload_files($args)
 		if ($s === false) {
 			$r = invoke_hook_while('upload', false, $args);
 			if (count($r) == 1) {
-				$s = array_pop(array_values($r));
-				log_msg('info', 'upload_object: '.quot($fn).' was handled by '.quot(array_pop(array_keys($r))));
+				$values = array_values($r);
+				$s = array_pop($values);
+				$keys = array_keys($r);
+				$handler = array_pop($keys);
+				log_msg('info', 'upload_object: '.quot($fn).' was handled by '.quot($handler));
 			}
 		}
 		// check fallback hook last

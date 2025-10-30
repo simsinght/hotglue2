@@ -158,6 +158,9 @@ function dir_is_different($a, $b)
  */
 function expl($delimiter, $string)
 {
+	if ($string === null || $string === '') {
+		return array();
+	}
 	$ret = explode($delimiter, $string);
 	if (count($ret) == 1 && empty($ret[0])) {
 		return array();

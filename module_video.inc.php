@@ -239,6 +239,7 @@ function video_serve_resource($args)
 			$obj['video-file-mime'] = '';
 		}
 		serve_file(CONTENT_DIR.'/'.$pn.'/shared/'.$obj['video-file'], $args['dl'], $obj['video-file-mime']);
+		return true;
 	}
 	
 	return false;
