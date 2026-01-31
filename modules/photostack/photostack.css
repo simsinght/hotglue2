@@ -1,0 +1,44 @@
+/**
+ *	modules/photostack/photostack.css
+ *	Styles for photostack module
+ */
+
+.photostack {
+	position: relative;
+	background-color: transparent;
+	overflow: visible;
+}
+
+.photostack-layer {
+	position: absolute;
+	box-sizing: border-box;
+	transition: opacity 0.3s ease-in-out;
+}
+
+.photostack-ghost {
+	pointer-events: none;
+}
+
+/* Focused layer for editing */
+.photostack-layer.photostack-layer-focused {
+	outline: 2px solid #0066ff;
+	outline-offset: -2px;
+	cursor: move;
+	z-index: 100;
+}
+
+/* Resize handle for focused layer */
+.photostack-layer-focused .ui-resizable-se {
+	width: 14px;
+	height: 14px;
+	right: 0;
+	bottom: 0;
+	background: #0066ff;
+	border: 2px solid #fff;
+	cursor: se-resize;
+}
+
+/* Hover effect in edit mode */
+.glue-editing .photostack:hover {
+	cursor: pointer;
+}
