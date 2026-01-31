@@ -1,2 +1,4 @@
 .DS_Store
 user-config.inc.php
+.htaccess
+local-content/
