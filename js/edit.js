@@ -1096,6 +1096,14 @@ $.glue.sel = function()
 				$.glue.sel.select($(this));
 			});
 			return false;
+		} else if ((e.metaKey || e.ctrlKey) && e.which == 90) {
+			// cmd+z (Mac) or ctrl+z: show revisions browser to suggest using revisions in place of undo
+			// Must be on keydown to prevent browser's default undo action
+			e.preventDefault();
+			if (confirm('Looking for an "undo" option?\nHOTGLUE keeps record of your recent edits - it\'s called "revisions".\nWould you like to browse through the revisions of this page?')) {
+				window.location = $.glue.base_url+'?'+$.glue.page+'/revisions';
+			}
+			return false;
 		} else {
 			// DEBUG
 			//console.log('html keydown '+e.which);
@@ -1934,12 +1942,6 @@ $(document).ready(function() {
 			// alt+p: show page menu
 			$.glue.menu.show('page');
 			return false;
-		} else if ((e.metaKey || e.ctrlKey) && e.which == 90) {
-			// cmd+z (Mac) or ctrl+z: show revisions browser to suggest using revisions in place of undo
-			if (confirm('Looking for an "undo" option?\nHOTGLUE keeps record of your recent edits - it\'s called "revisions".\nWould you like to browse through the revisions of this page?')) {
-				window.location = $.glue.base_url+'?'+$.glue.page+'/revisions';
-				return false;
-			}
 		}
 	});
 	
