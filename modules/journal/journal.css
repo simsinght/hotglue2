@@ -1,0 +1,86 @@
+/**
+ *	modules/journal/journal.css
+ *	Styles for journal page-flip module
+ */
+
+.journal {
+	position: absolute;
+	overflow: hidden;
+}
+
+/* Ensure resize handles are above journal content */
+.journal > .ui-resizable-handle {
+	z-index: 10;
+}
+
+.journal-pages {
+	position: relative;
+	width: 100%;
+	height: 100%;
+	transform-style: preserve-3d;
+	perspective: 2000px;
+}
+
+.journal-page {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	transform-style: preserve-3d;
+	pointer-events: none;
+}
+
+.journal-page-left,
+.journal-page-right {
+	position: absolute;
+	top: 0;
+	height: 100%;
+	overflow: hidden;
+	pointer-events: auto;
+}
+
+.journal-page-left {
+	left: 0;
+	transform-origin: right center;
+	transform-style: preserve-3d;
+	backface-visibility: hidden;
+	-webkit-backface-visibility: hidden;
+	transition: transform 0.6s ease-in-out;
+}
+
+.journal-page-right {
+	transform-origin: left center;
+	transform-style: preserve-3d;
+	backface-visibility: hidden;
+	-webkit-backface-visibility: hidden;
+	transition: transform 0.6s ease-in-out;
+}
+
+.journal-page-left img,
+.journal-page-right img {
+	position: absolute;
+	width: auto;
+	height: 100%;
+	user-select: none;
+	-webkit-user-drag: none;
+	pointer-events: none;
+}
+
+/* Edit mode styles */
+.journal.glue-selected .journal-pages {
+	pointer-events: none;
+}
+
+.journal-page-focused {
+	outline: 2px solid #4a90d9;
+	outline-offset: -2px;
+}
+
+/* Flip animation shadow effect */
+.journal-page-right.is-flipping {
+	box-shadow: -5px 0 15px rgba(0, 0, 0, 0.3);
+}
+.journal-page-left.is-flipping {
+	box-shadow: 5px 0 15px rgba(0, 0, 0, 0.3);
+}
