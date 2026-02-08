@@ -82,6 +82,7 @@
 	margin-right: 5px;
 	margin-top: 5px;
 	opacity: 1.0;
+	transform-origin: center center;
 }
 
 .glue-menu-enabled {

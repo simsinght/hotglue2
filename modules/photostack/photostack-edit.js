@@ -684,6 +684,27 @@ $(document).bind('keydown', function(e) {
 	}
 });
 
+// Click outside to deselect photostack (handles cases where body click doesn't work)
+$(document).bind('click', function(e) {
+	// Only act if we have a selected photostack
+	var selectedStack = $('.photostack.glue-selected');
+	if (selectedStack.length === 0) return;
+
+	// Check if click is outside the photostack and outside the context menu
+	var target = $(e.target);
+	if (target.closest('.photostack').length === 0 &&
+		target.closest('.glue-ui').length === 0 &&
+		target.closest('.photostack-overlay').length === 0) {
+		// Unfocus any focused layer first
+		if ($.glue.photostack.hasFocusedLayer()) {
+			$.glue.photostack.unfocusLayer();
+			$('.photostack-layer-btn').css('background', '#ddd');
+		}
+		// Deselect the photostack
+		$.glue.sel.none();
+	}
+});
+
 
 $(document).ready(function() {
 	//

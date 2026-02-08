@@ -162,6 +162,30 @@ $.glue.colorpicker = function()
 	};
 }();
 
+// function to calculate icon scale based on viewport
+$.glue.get_zoom_level = function() {
+	// When user zooms out, they can see more of the canvas
+	// We'll scale icons based on how much of the canvas is visible
+	// Default viewport is around 1200-1400px wide - at this size, icons are normal
+	// When viewport is 3000px wide (zoomed way out), icons should be 2-3x larger
+
+	var viewportWidth = $(window).width();
+	var viewportHeight = $(window).height();
+
+	// Use a baseline of 1200px viewport width
+	// At 1200px width, scale = 1.0 (normal)
+	// At 2400px width, scale = 2.0 (icons 2x bigger)
+	// At 600px width, scale = 0.5 (icons smaller - though this is unlikely when zoomed out)
+	var baselineWidth = 1200;
+	var scale = Math.max(1.0, viewportWidth / baselineWidth);
+
+	// Cap the maximum scale to avoid huge icons
+	scale = Math.min(scale, 4.0);
+
+	console.log('Viewport:', viewportWidth + 'x' + viewportHeight, 'scaling icons by:', scale.toFixed(2) + 'x');
+	return scale;
+};
+
 $.glue.contextmenu = function()
 {
 	var default_prio = 10;
@@ -171,30 +195,6 @@ $.glue.contextmenu = function()
 	var prev_owner = false;
 	var top = [];
 	var veto = {};
-
-	// function to calculate icon scale based on viewport
-	var get_zoom_level = function() {
-		// When user zooms out, they can see more of the canvas
-		// We'll scale icons based on how much of the canvas is visible
-		// Default viewport is around 1200-1400px wide - at this size, icons are normal
-		// When viewport is 3000px wide (zoomed way out), icons should be 2-3x larger
-
-		var viewportWidth = $(window).width();
-		var viewportHeight = $(window).height();
-
-		// Use a baseline of 1200px viewport width
-		// At 1200px width, scale = 1.0 (normal)
-		// At 2400px width, scale = 2.0 (icons 2x bigger)
-		// At 600px width, scale = 0.5 (icons smaller - though this is unlikely when zoomed out)
-		var baselineWidth = 1200;
-		var scale = Math.max(1.0, viewportWidth / baselineWidth);
-
-		// Cap the maximum scale to avoid huge icons
-		scale = Math.min(scale, 4.0);
-
-		console.log('Viewport:', viewportWidth + 'x' + viewportHeight, 'scaling icons by:', scale.toFixed(2) + 'x');
-		return scale;
-	};
 	
 	$('.object').live('glue-deselect', function(e) {
 		// hide menu when deselecting
@@ -381,7 +381,7 @@ $.glue.contextmenu = function()
 					}
 				}
 				// detect zoom level and calculate scale factor
-				var scale = get_zoom_level();
+				var scale = $.glue.get_zoom_level();
 				console.log('Context menu scaling with factor:', scale);
 
 				// add items to dom
@@ -740,6 +740,9 @@ $.glue.menu = function()
 			if (y === undefined) {
 				y = $(window).height()/2;
 			}
+			// detect zoom level and calculate scale factor
+			var scale = $.glue.get_zoom_level();
+			console.log('Menu scaling with factor:', scale);
 			var max_w = 0;
 			var max_h = 0;
 			cur = m[menu];
@@ -756,6 +759,10 @@ $.glue.menu = function()
 				$(elem).css('top', y+'px');
 				$(elem).css('visibility', 'hidden');
 				$(elem).css('z-index', '201');
+				// apply zoom-compensating scale
+				$(elem).css('transform', 'scale('+scale+')');
+				$(elem).css('-webkit-transform', 'scale('+scale+')');
+				$(elem).css('-moz-transform', 'scale('+scale+')');
 				// add to dom
 				$('body').append(elem);
 				// trigger event
@@ -800,9 +807,9 @@ $.glue.menu = function()
 				$(elem).css('opacity', '0.0');
 				$(elem).css('visibility', '');
 				$(elem).animate({
-					left: (x-(num_rows*max_w)/2+cur_col*max_w)+'px',
+					left: (x-(num_rows*max_w*scale)/2+cur_col*max_w*scale)+'px',
 					opacity: 1.0,
-					top: (y-(num_rows*max_h)/2+cur_row*max_h)+'px'
+					top: (y-(num_rows*max_h*scale)/2+cur_row*max_h*scale)+'px'
 				}, 200);
 				cur_col++;
 			}
