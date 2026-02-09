@@ -77,6 +77,55 @@
 	outline-offset: -2px;
 }
 
+/* Alt text toggle button */
+.journal-alt-toggle {
+	position: absolute;
+	bottom: 8px;
+	right: 8px;
+	z-index: 5;
+	padding: 4px 8px;
+	font-size: 11px;
+	font-weight: bold;
+	font-family: sans-serif;
+	color: #333;
+	background: rgba(255, 255, 255, 0.6);
+	border: 1px solid rgba(0, 0, 0, 0.2);
+	border-radius: 3px;
+	cursor: pointer;
+	line-height: 1;
+	user-select: none;
+}
+
+.journal-alt-toggle:hover {
+	background: rgba(255, 255, 255, 0.85);
+}
+
+.journal-alt-toggle.active {
+	background: rgba(0, 0, 0, 0.6);
+	color: #fff;
+	border-color: rgba(0, 0, 0, 0.4);
+}
+
+/* Floating dismiss button (appended to body when alt is showing) */
+.journal-alt-dismiss {
+	position: absolute;
+	padding: 4px 8px;
+	font-size: 11px;
+	font-weight: bold;
+	font-family: sans-serif;
+	background: rgba(0, 0, 0, 0.6);
+	color: #fff;
+	border: 1px solid rgba(0, 0, 0, 0.4);
+	border-radius: 3px;
+	cursor: pointer;
+	line-height: 1;
+	user-select: none;
+}
+
+.journal-alt-dismiss:hover {
+	background: rgba(0, 0, 0, 0.8);
+}
+
 /* Flip animation shadow effect */
 .journal-page-right.is-flipping {
 	box-shadow: -5px 0 15px rgba(0, 0, 0, 0.3);

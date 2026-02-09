@@ -162,6 +162,25 @@ function journal_alter_render_early($args)
 
 	elem_append($elem, $container);
 
+	// Build alt objects map (page index => array of object names)
+	$altMap = array();
+	foreach ($pages as $index => $page) {
+		$altObjs = $page['altObjects'] ?? array();
+		if (!empty($altObjs)) {
+			$altMap[$index] = $altObjs;
+		}
+	}
+	if (!empty($altMap)) {
+		elem_attr($elem, 'data-alt-objects', json_encode($altMap));
+	}
+
+	// Add ALT toggle button (hidden by default, JS shows it when current page has alt text)
+	$altToggle = elem('button');
+	elem_add_class($altToggle, 'journal-alt-toggle');
+	elem_css($altToggle, 'display', 'none');
+	elem_append($altToggle, 'ALT');
+	elem_append($elem, $altToggle);
+
 	return true;
 }
 
@@ -178,13 +197,26 @@ function journal_save_state($args)
 		return false;
 	}
 
+	$obj['type'] = 'journal';
+	$obj['module'] = 'journal';
+
 	// Save any modified attributes back to object
 	$current = elem_attr($elem, 'data-journal-current');
 	if ($current !== NULL) {
 		$obj['journal-current'] = intval($current);
 	}
 
-	return true;
+	// Extract CSS dimensions/position via alter_save hooks
+	invoke_hook('alter_save', array('obj'=>&$obj, 'elem'=>$elem));
+
+	load_modules('glue');
+	$ret = save_object($obj);
+	if ($ret['#error']) {
+		log_msg('error', 'journal_save_state: error saving object');
+		return false;
+	} else {
+		return true;
+	}
 }
 
 
@@ -233,14 +265,126 @@ function journal_render_page_early($args)
 		// View mode JS (clicking to flip pages)
 		html_add_js_inline('
 			document.addEventListener("DOMContentLoaded", function() {
+				function getAltMap(journal) {
+					try { return JSON.parse(journal.getAttribute("data-alt-objects") || "{}"); }
+					catch(e) { return {}; }
+				}
+
+				function getAltIds(journal, pageIndex) {
+					var map = getAltMap(journal);
+					return map[pageIndex] || [];
+				}
+
+				function showAltObjects(ids) {
+					for (var k = 0; k < ids.length; k++) {
+						var el = document.getElementById(ids[k]);
+						if (el) el.style.display = "";
+					}
+				}
+
+				function hideAltObjects(ids) {
+					for (var k = 0; k < ids.length; k++) {
+						var el = document.getElementById(ids[k]);
+						if (el) el.style.display = "none";
+					}
+				}
+
+				function hideAllAltObjects(journal) {
+					var map = getAltMap(journal);
+					for (var p in map) {
+						hideAltObjects(map[p]);
+					}
+				}
+
+				function removeDismissBtn(journal) {
+					var existing = journal._altDismissBtn;
+					if (existing && existing.parentNode) {
+						existing.parentNode.removeChild(existing);
+					}
+					journal._altDismissBtn = null;
+				}
+
+				function createDismissBtn(journal) {
+					removeDismissBtn(journal);
+					var btn = document.createElement("button");
+					btn.className = "journal-alt-dismiss";
+					btn.textContent = "\u00d7";
+					var rect = journal.getBoundingClientRect();
+					var scrollX = window.pageXOffset || document.documentElement.scrollLeft;
+					var scrollY = window.pageYOffset || document.documentElement.scrollTop;
+					var objZ = parseInt(journal.style.zIndex) || 0;
+					document.body.appendChild(btn);
+					btn.style.left = (rect.right + scrollX - btn.offsetWidth - 8) + "px";
+					btn.style.top = (rect.bottom + scrollY - btn.offsetHeight - 8) + "px";
+					btn.style.zIndex = objZ + 2;
+					btn.addEventListener("click", function(e) {
+						e.stopPropagation();
+						dismissAlt(journal);
+						updateAltBtn(journal);
+					});
+					journal._altDismissBtn = btn;
+				}
+
+				function dismissAlt(journal) {
+					hideAllAltObjects(journal);
+					removeDismissBtn(journal);
+					var btn = journal.querySelector(".journal-alt-toggle");
+					if (btn) { btn.textContent = "ALT"; btn.style.display = ""; btn.classList.remove("active"); }
+				}
+
+				function updateAltBtn(journal) {
+					var btn = journal.querySelector(".journal-alt-toggle");
+					if (!btn) return;
+					var current = parseInt(journal.getAttribute("data-journal-current")) || 0;
+					var ids = getAltIds(journal, current);
+					btn.style.display = ids.length > 0 ? "" : "none";
+				}
+
 				var journals = document.querySelectorAll(".journal");
 				for (var i = 0; i < journals.length; i++) {
 					(function(journal) {
 						journal.style.cursor = "pointer";
 						var isAnimating = false;
+						var altShowing = false;
+
+						// Hide all alt text objects on load
+						hideAllAltObjects(journal);
+
+						// ALT toggle button
+						var altBtn = journal.querySelector(".journal-alt-toggle");
+						if (altBtn) {
+							altBtn.addEventListener("click", function(e) {
+								e.stopPropagation();
+								var current = parseInt(journal.getAttribute("data-journal-current")) || 0;
+								var ids = getAltIds(journal, current);
+								if (ids.length === 0) return;
+								if (!altShowing) {
+									showAltObjects(ids);
+									altBtn.style.display = "none";
+									createDismissBtn(journal);
+									altShowing = true;
+								} else {
+									dismissAlt(journal);
+									updateAltBtn(journal);
+									altShowing = false;
+								}
+							});
+						}
+
+						// Show ALT button only if current page has alt text
+						updateAltBtn(journal);
 
 						journal.addEventListener("click", function(e) {
 							if (isAnimating) return;
+							if (e.target.closest(".journal-alt-toggle")) return;
+							if (e.target.closest(".journal-alt-dismiss")) return;
+
+							// Auto-dismiss alt text before flipping
+							if (altShowing) {
+								dismissAlt(journal);
+								updateAltBtn(journal);
+								altShowing = false;
+							}
 
 							var rect = journal.getBoundingClientRect();
 							var clickX = e.clientX - rect.left;
@@ -283,6 +427,7 @@ function journal_render_page_early($args)
 									if (nextPage) nextPage.style.zIndex = 2;
 									journal.setAttribute("data-journal-current", next);
 									isAnimating = false;
+									updateAltBtn(journal);
 								}, 600);
 
 							} else if (clickPercent <= foldLine && current > 0) {
@@ -312,6 +457,7 @@ function journal_render_page_early($args)
 									currentPage.style.visibility = "hidden";
 									journal.setAttribute("data-journal-current", next);
 									isAnimating = false;
+									updateAltBtn(journal);
 								}, 600);
 							}
 						});
