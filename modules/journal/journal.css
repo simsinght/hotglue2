@@ -80,50 +80,49 @@
 /* Alt text toggle button */
 .journal-alt-toggle {
 	position: absolute;
-	bottom: 8px;
-	right: 8px;
+	bottom: 4px;
+	right: 4px;
 	z-index: 5;
-	padding: 4px 8px;
-	font-size: 11px;
-	font-weight: bold;
-	font-family: sans-serif;
-	color: #333;
-	background: rgba(255, 255, 255, 0.6);
-	border: 1px solid rgba(0, 0, 0, 0.2);
-	border-radius: 3px;
+	padding: 3px 5px;
+	font-size: 10px;
+	font-weight: 700;
+	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+	color: #fff;
+	background: rgba(0, 0, 0, 0.7);
+	border: none;
+	border-radius: 4px;
 	cursor: pointer;
 	line-height: 1;
 	user-select: none;
 }
 
 .journal-alt-toggle:hover {
-	background: rgba(255, 255, 255, 0.85);
+	background: rgba(0, 0, 0, 0.85);
 }
 
 .journal-alt-toggle.active {
-	background: rgba(0, 0, 0, 0.6);
+	background: rgba(0, 0, 0, 0.9);
 	color: #fff;
-	border-color: rgba(0, 0, 0, 0.4);
 }
 
 /* Floating dismiss button (appended to body when alt is showing) */
 .journal-alt-dismiss {
 	position: absolute;
-	padding: 4px 8px;
-	font-size: 11px;
-	font-weight: bold;
-	font-family: sans-serif;
-	background: rgba(0, 0, 0, 0.6);
+	padding: 3px 5px;
+	font-size: 10px;
+	font-weight: 700;
+	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+	background: rgba(0, 0, 0, 0.7);
 	color: #fff;
-	border: 1px solid rgba(0, 0, 0, 0.4);
-	border-radius: 3px;
+	border: none;
+	border-radius: 4px;
 	cursor: pointer;
 	line-height: 1;
 	user-select: none;
 }
 
 .journal-alt-dismiss:hover {
-	background: rgba(0, 0, 0, 0.8);
+	background: rgba(0, 0, 0, 0.85);
 }
 
 /* Flip animation shadow effect */

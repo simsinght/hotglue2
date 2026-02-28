@@ -105,7 +105,7 @@ $.glue.journal = function() {
 				currentPage.css('visibility', 'hidden');
 				nextPage.css('z-index', 2);
 				$(obj).attr('data-journal-current', next);
-				self.updateAltBtn(obj);
+				self._showAltAfterFlip(obj, next);
 			}, 600);
 		},
 
@@ -145,7 +145,7 @@ $.glue.journal = function() {
 				prevPage.find('.journal-page-right').removeClass('is-flipping');
 				currentPage.css('visibility', 'hidden');
 				$(obj).attr('data-journal-current', prev);
-				self.updateAltBtn(obj);
+				self._showAltAfterFlip(obj, prev);
 			}, 600);
 		},
 
@@ -153,18 +153,24 @@ $.glue.journal = function() {
 		 *	Reset to first page
 		 */
 		reset: function(obj) {
-			$(obj).attr('data-journal-current', 0);
+			var start = parseInt($(obj).attr('data-journal-start-page')) || 0;
+			$(obj).attr('data-journal-current', start);
 
 			$(obj).find('.journal-page').each(function() {
 				var index = parseInt($(this).attr('data-index'));
-				if (index === 0) {
+				if (index === start) {
 					$(this).css({ 'visibility': 'visible', 'z-index': 2 });
 					$(this).find('.journal-page-left').css('transform', '');
 					$(this).find('.journal-page-right').css('transform', '');
 				} else {
 					$(this).css({ 'visibility': 'hidden', 'z-index': 1 });
-					$(this).find('.journal-page-left').css('transform', 'rotateY(180deg)');
-					$(this).find('.journal-page-right').css('transform', '');
+					if (index > start) {
+						$(this).find('.journal-page-left').css('transform', 'rotateY(180deg)');
+						$(this).find('.journal-page-right').css('transform', '');
+					} else {
+						$(this).find('.journal-page-left').css('transform', '');
+						$(this).find('.journal-page-right').css('transform', 'rotateY(-180deg)');
+					}
 				}
 			});
 
@@ -188,6 +194,7 @@ $.glue.journal = function() {
 				}
 
 				var pages = data['pages'] || [];
+				var startPage = data['startPage'] || 0;
 
 				var html = '<div class="journal-manage-dialog" style="background:#fff;padding:20px;border-radius:5px;min-width:400px;max-height:80vh;overflow-y:auto;">';
 				html += '<h3 style="margin-top:0;">Manage Journal Pages</h3>';
@@ -199,7 +206,8 @@ $.glue.journal = function() {
 					html += '<div class="journal-page-item" data-index="' + i + '" style="display:flex;align-items:center;padding:8px;margin-bottom:8px;background:#f5f5f5;border-radius:4px;">';
 					html += '<img src="' + page.src + '" style="width:80px;height:60px;object-fit:cover;margin-right:10px;border-radius:3px;">';
 					html += '<span style="flex:1;font-size:14px;">Page ' + i + '</span>';
-					html += '<label style="flex:0 0 auto;font-size:12px;color:#666;margin-left:8px;cursor:pointer;"><input type="checkbox" class="journal-cover-toggle" data-index="' + i + '"' + (isCover ? ' checked' : '') + '> Cover</label>';
+					html += '<label style="flex:0 0 auto;font-size:12px;color:#666;margin-left:8px;cursor:pointer;" title="Open to this page on load"><input type="radio" name="journal-start-page" class="journal-start-toggle" data-index="' + i + '"' + (i === startPage ? ' checked' : '') + '> Start</label>';
+				html += '<label style="flex:0 0 auto;font-size:12px;color:#666;margin-left:8px;cursor:pointer;"><input type="checkbox" class="journal-cover-toggle" data-index="' + i + '"' + (isCover ? ' checked' : '') + '> Cover</label>';
 					html += '<button class="journal-edit-page" data-index="' + i + '" style="margin-left:8px;cursor:pointer;">Edit</button>';
 					html += '<button class="journal-move-up" data-index="' + i + '" style="margin-left:4px;cursor:pointer;"' + (i === 0 ? ' disabled' : '') + '>&uarr;</button>';
 					html += '<button class="journal-move-down" data-index="' + i + '" style="margin-left:4px;cursor:pointer;"' + (i === pages.length - 1 ? ' disabled' : '') + '>&darr;</button>';
@@ -296,6 +304,18 @@ $.glue.journal = function() {
 					}
 				});
 
+				$(dialog).find('.journal-start-toggle').change(function(e) {
+					e.stopPropagation();
+					var index = parseInt($(this).attr('data-index'));
+					$.glue.backend({
+						method: 'journal.set_start_page',
+						name: $(obj).attr('id'),
+						startPage: index
+					}, function() {
+						$(obj).attr('data-journal-start-page', index);
+					});
+				});
+
 				$(dialog).find('.journal-cover-toggle').change(function(e) {
 					e.stopPropagation();
 					var index = parseInt($(this).attr('data-index'));
@@ -350,13 +370,35 @@ $.glue.journal = function() {
 		},
 
 		/**
+		 *	After a page flip, show alt objects for the new page if alt mode is active
+		 */
+		_showAltAfterFlip: function(obj, newPageIndex) {
+			if ($(obj).data('altShowing')) {
+				var ids = this._getAltIds(obj, newPageIndex);
+				if (ids.length > 0) {
+					for (var i = 0; i < ids.length; i++) {
+						var el = document.getElementById(ids[i]);
+						if (el) $(el).show();
+					}
+					// Reposition the floating dismiss button
+					var dismissBtn = $(obj).data('altDismissBtn');
+					if (dismissBtn) this._positionDismiss(obj, dismissBtn);
+				} else {
+					// New page has no alt objects — dismiss alt mode
+					this.dismissAlt(obj);
+				}
+			}
+			this.updateAltBtn(obj);
+		},
+
+		/**
 		 *	Show/hide ALT button based on whether current page has alt text objects
 		 */
 		updateAltBtn: function(obj) {
 			var current = parseInt($(obj).attr('data-journal-current')) || 0;
 			var ids = this._getAltIds(obj, current);
 			var btn = $(obj).find('.journal-alt-toggle');
-			if (ids.length > 0) {
+			if (ids.length > 0 && !$(obj).data('altShowing')) {
 				btn.show();
 			} else {
 				btn.hide();
@@ -383,6 +425,17 @@ $.glue.journal = function() {
 		 */
 		dismissAlt: function(obj) {
 			var map = this._getAltMap(obj);
+			// Deselect any alt text object before hiding, so the deselect
+			// position compensation reads correct coordinates
+			for (var p in map) {
+				var ids = map[p];
+				for (var i = 0; i < ids.length; i++) {
+					var el = document.getElementById(ids[i]);
+					if (el && $(el).hasClass('glue-selected')) {
+						$.glue.sel.deselect($(el));
+					}
+				}
+			}
 			for (var p in map) {
 				var ids = map[p];
 				for (var i = 0; i < ids.length; i++) {
@@ -701,9 +754,21 @@ $('.journal').live('click', function(e) {
 		return;
 	}
 
-	// Auto-dismiss alt text objects before flipping
-	$.glue.journal.dismissAlt(this);
-	$.glue.journal.updateAltBtn(this);
+	// Hide current page's alt objects before flipping (but keep alt mode if active)
+	var altWasShowing = $(this).data('altShowing');
+	if (altWasShowing) {
+		var currentIdx = parseInt($(this).attr('data-journal-current')) || 0;
+		var curIds = $.glue.journal._getAltIds(this, currentIdx);
+		for (var ai = 0; ai < curIds.length; ai++) {
+			var ael = document.getElementById(curIds[ai]);
+			if (ael) {
+				if ($(ael).hasClass('glue-selected')) {
+					$.glue.sel.deselect($(ael));
+				}
+				$(ael).hide();
+			}
+		}
+	}
 
 	var rect = this.getBoundingClientRect();
 	var clickX = e.clientX - rect.left;

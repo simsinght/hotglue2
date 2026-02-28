@@ -34,9 +34,13 @@ function journal_alter_render_early($args)
 		$pages = array();
 	}
 
-	// Always start at first page on load
-	$current = 0;
+	// Start at configured start page (default: 0)
+	$current = intval($obj['journal-start-page'] ?? 0);
+	if ($current < 0 || $current >= count($pages)) {
+		$current = 0;
+	}
 	elem_attr($elem, 'data-journal-current', $current);
+	elem_attr($elem, 'data-journal-start-page', $current);
 	elem_attr($elem, 'data-journal-count', count($pages));
 
 	// If no pages, just add a placeholder style
@@ -320,7 +324,7 @@ function journal_render_page_early($args)
 					btn.addEventListener("click", function(e) {
 						e.stopPropagation();
 						dismissAlt(journal);
-						updateAltBtn(journal);
+						updateAltBtn(journal, altShowing);
 					});
 					journal._altDismissBtn = btn;
 				}
@@ -332,12 +336,12 @@ function journal_render_page_early($args)
 					if (btn) { btn.textContent = "ALT"; btn.style.display = ""; btn.classList.remove("active"); }
 				}
 
-				function updateAltBtn(journal) {
+				function updateAltBtn(journal, isAltShowing) {
 					var btn = journal.querySelector(".journal-alt-toggle");
 					if (!btn) return;
 					var current = parseInt(journal.getAttribute("data-journal-current")) || 0;
 					var ids = getAltIds(journal, current);
-					btn.style.display = ids.length > 0 ? "" : "none";
+					btn.style.display = (ids.length > 0 && !isAltShowing) ? "" : "none";
 				}
 
 				var journals = document.querySelectorAll(".journal");
@@ -365,25 +369,24 @@ function journal_render_page_early($args)
 									altShowing = true;
 								} else {
 									dismissAlt(journal);
-									updateAltBtn(journal);
+									updateAltBtn(journal, altShowing);
 									altShowing = false;
 								}
 							});
 						}
 
 						// Show ALT button only if current page has alt text
-						updateAltBtn(journal);
+						updateAltBtn(journal, altShowing);
 
 						journal.addEventListener("click", function(e) {
 							if (isAnimating) return;
 							if (e.target.closest(".journal-alt-toggle")) return;
 							if (e.target.closest(".journal-alt-dismiss")) return;
 
-							// Auto-dismiss alt text before flipping
+							// Hide current page alt objects before flipping (keep alt mode active)
 							if (altShowing) {
-								dismissAlt(journal);
-								updateAltBtn(journal);
-								altShowing = false;
+								var curIdx = parseInt(journal.getAttribute("data-journal-current")) || 0;
+								hideAltObjects(getAltIds(journal, curIdx));
 							}
 
 							var rect = journal.getBoundingClientRect();
@@ -427,7 +430,16 @@ function journal_render_page_early($args)
 									if (nextPage) nextPage.style.zIndex = 2;
 									journal.setAttribute("data-journal-current", next);
 									isAnimating = false;
-									updateAltBtn(journal);
+									if (altShowing) {
+										var newIds = getAltIds(journal, next);
+										if (newIds.length > 0) {
+											showAltObjects(newIds);
+										} else {
+											dismissAlt(journal);
+											altShowing = false;
+										}
+									}
+									updateAltBtn(journal, altShowing);
 								}, 600);
 
 							} else if (clickPercent <= foldLine && current > 0) {
@@ -457,7 +469,16 @@ function journal_render_page_early($args)
 									currentPage.style.visibility = "hidden";
 									journal.setAttribute("data-journal-current", next);
 									isAnimating = false;
-									updateAltBtn(journal);
+									if (altShowing) {
+										var newIds = getAltIds(journal, next);
+										if (newIds.length > 0) {
+											showAltObjects(newIds);
+										} else {
+											dismissAlt(journal);
+											altShowing = false;
+										}
+									}
+									updateAltBtn(journal, altShowing);
 								}, 600);
 							}
 						});
@@ -669,9 +690,12 @@ function journal_get_data($args)
 		}
 	}
 
+	$startPage = intval($obj['journal-start-page'] ?? 0);
+
 	return response(array(
 		'pages' => $pages,
-		'current' => $current
+		'current' => $current,
+		'startPage' => $startPage
 	));
 }
 
@@ -710,6 +734,35 @@ function journal_update_pages($args)
 }
 
 register_service('journal.update_pages', 'journal_update_pages', array('auth'=>true));
+
+
+/**
+ *	Set the start page for a journal
+ */
+function journal_set_start_page($args)
+{
+	load_modules('glue');
+
+	if (empty($args['name'])) {
+		return response('Required argument "name" is missing', 400);
+	}
+
+	if (!isset($args['startPage'])) {
+		return response('Required argument "startPage" is missing', 400);
+	}
+
+	$obj = load_object(array('name' => $args['name']));
+	if ($obj['#error']) {
+		return response('Journal not found', 404);
+	}
+	$obj = $obj['#data'];
+
+	$obj['journal-start-page'] = intval($args['startPage']);
+
+	return save_object($obj);
+}
+
+register_service('journal.set_start_page', 'journal_set_start_page', array('auth'=>true));
 
 
 /**
