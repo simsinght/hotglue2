@@ -89,12 +89,17 @@ function is_base_url_secure()
  */
 function base_url()
 {
-	global $base_url_cached;
+	global $base_url_cached, $base_url_host_key;
 
 	$temp = BASE_URL;
 	if (!empty($temp)) {
 		return $temp;
-	} elseif (!isset($base_url_cached)) {
+	}
+	// Recompute when HTTP_HOST changes (PHP built-in server
+	// reuses globals across requests from different clients)
+	$host_key = ($_SERVER['HTTP_HOST'] ?? '') . '/' . ($_SERVER['SERVER_PORT'] ?? '');
+	if (!isset($base_url_cached) || !isset($base_url_host_key) || $base_url_host_key !== $host_key) {
+		$base_url_host_key = $host_key;
 		if (!is_base_url_secure()) {
 			$base_url_cached = 'http://'.$_SERVER['HTTP_HOST'];
 			if ($_SERVER['SERVER_PORT'] != '80') {

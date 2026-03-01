@@ -1,0 +1,260 @@
+/**
+ *	modules/music/music.css
+ *	Styles for music player module
+ */
+
+.music-player {
+	position: absolute;
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+}
+
+/* Ensure resize handles are above player content */
+.music-player > .ui-resizable-handle {
+	z-index: 10;
+}
+
+/* Top row: album art left, info + scrubber right */
+.music-top {
+	display: flex;
+	align-items: stretch;
+	flex: 1;
+	min-height: 0;
+}
+
+.music-album-art {
+	flex-shrink: 0;
+	aspect-ratio: 1;
+	height: 100%;
+	margin-right: 15px;
+	border-radius: 8px;
+	overflow: hidden;
+}
+
+.music-cover-img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+
+.music-track-info {
+	color: white;
+	font-family: 'Arial', sans-serif;
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+}
+
+.music-title {
+	font-weight: bold;
+	margin-bottom: 4px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.music-artist {
+	color: #ccc;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* Hidden audio element (no native controls) */
+.music-audio {
+	display: none;
+}
+
+/* Custom progress bar */
+.music-progress-wrap {
+	width: 100%;
+}
+
+.music-progress-bar {
+	width: 100%;
+	height: 6px;
+	background: rgba(255, 255, 255, 0.2);
+	border-radius: 3px;
+	cursor: pointer;
+	position: relative;
+}
+
+.music-progress-fill {
+	height: 100%;
+	background: #fff;
+	border-radius: 3px;
+	width: 0%;
+	pointer-events: none;
+}
+
+.music-time-row {
+	display: flex;
+	justify-content: space-between;
+	margin-top: 4px;
+}
+
+.music-time-elapsed,
+.music-time-remaining {
+	color: #999;
+	white-space: nowrap;
+}
+
+/* Controls */
+.music-controls {
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.music-controls button {
+	background: none;
+	border: none;
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+/* ========================================
+   Size presets — compact / default / large
+   ======================================== */
+
+/* --- Compact (music-size-sm) --- */
+.music-player.music-size-sm .music-title {
+	font-size: 16px;
+}
+.music-player.music-size-sm .music-artist {
+	font-size: 13px;
+	margin-bottom: 8px;
+}
+.music-player.music-size-sm .music-time-elapsed,
+.music-time-remaining {
+	font-size: 10px;
+}
+.music-player.music-size-sm .music-controls {
+	padding: 6px 0 0;
+	gap: 16px;
+}
+.music-player.music-size-sm .music-controls button {
+	padding: 4px;
+}
+.music-player.music-size-sm .music-prev svg,
+.music-player.music-size-sm .music-next svg {
+	width: 24px;
+	height: 24px;
+}
+.music-player.music-size-sm .music-play-pause svg {
+	width: 32px;
+	height: 32px;
+}
+
+/* --- Default (music-size-md) --- */
+.music-player.music-size-md .music-title {
+	font-size: 20px;
+}
+.music-player.music-size-md .music-artist {
+	font-size: 16px;
+	margin-bottom: 12px;
+}
+.music-player.music-size-md .music-time-elapsed,
+.music-time-remaining {
+	font-size: 11px;
+}
+.music-player.music-size-md .music-controls {
+	padding: 10px 0 0;
+	gap: 24px;
+}
+.music-player.music-size-md .music-controls button {
+	padding: 6px;
+}
+.music-player.music-size-md .music-prev svg,
+.music-player.music-size-md .music-next svg {
+	width: 32px;
+	height: 32px;
+}
+.music-player.music-size-md .music-play-pause svg {
+	width: 44px;
+	height: 44px;
+}
+
+/* --- Large (music-size-lg) --- */
+.music-player.music-size-lg .music-title {
+	font-size: 26px;
+}
+.music-player.music-size-lg .music-artist {
+	font-size: 20px;
+	margin-bottom: 16px;
+}
+.music-player.music-size-lg .music-time-elapsed,
+.music-time-remaining {
+	font-size: 13px;
+}
+.music-player.music-size-lg .music-controls {
+	padding: 14px 0 0;
+	gap: 32px;
+}
+.music-player.music-size-lg .music-controls button {
+	padding: 8px;
+}
+.music-player.music-size-lg .music-prev svg,
+.music-player.music-size-lg .music-next svg {
+	width: 42px;
+	height: 42px;
+}
+.music-player.music-size-lg .music-play-pause svg {
+	width: 56px;
+	height: 56px;
+}
+
+/* --- Vertical stacked (music-size-vt) --- */
+.music-player.music-size-vt .music-top {
+	flex-direction: column;
+	align-items: center;
+}
+.music-player.music-size-vt .music-album-art {
+	height: auto;
+	width: 100%;
+	aspect-ratio: 1;
+	margin-right: 0;
+	margin-bottom: 12px;
+	border-radius: 10px;
+}
+.music-player.music-size-vt .music-track-info {
+	width: 100%;
+	align-items: center;
+	text-align: center;
+}
+.music-player.music-size-vt .music-title {
+	font-size: 18px;
+}
+.music-player.music-size-vt .music-artist {
+	font-size: 14px;
+	margin-bottom: 10px;
+}
+.music-player.music-size-vt .music-progress-wrap {
+	width: 100%;
+}
+.music-player.music-size-vt .music-time-elapsed,
+.music-time-remaining {
+	font-size: 10px;
+}
+.music-player.music-size-vt .music-controls {
+	padding: 8px 0 0;
+	gap: 20px;
+}
+.music-player.music-size-vt .music-controls button {
+	padding: 4px;
+}
+.music-player.music-size-vt .music-prev svg,
+.music-player.music-size-vt .music-next svg {
+	width: 28px;
+	height: 28px;
+}
+.music-player.music-size-vt .music-play-pause svg {
+	width: 38px;
+	height: 38px;
+}
