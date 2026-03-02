@@ -1080,7 +1080,7 @@ $.glue.sel = function()
 			}
 			// prevent window scrolling
 			return false;
-		} else if (e.ctrlKey && e.which == 65) {
+		} else if ((e.metaKey || e.ctrlKey) && e.which == 65) {
 			// select all objects not locked objects
 			// selected locked objects will be unselected
 			$('.object').not('.glue-selected').not('.locked').each(function() {
@@ -1091,11 +1091,11 @@ $.glue.sel = function()
 				$.glue.sel.deselect($(this));
 			});
 			return false;
-		} else if (e.ctrlKey && e.which == 68) {
+		} else if ((e.metaKey || e.ctrlKey) && e.which == 68) {
 			// select none
 			$.glue.sel.none();
 			return false;
-		} else if (e.ctrlKey && e.which == 73) {
+		} else if ((e.metaKey || e.ctrlKey) && e.which == 73) {
 			// invert selection
 			var next = $('.object').not('.glue-selected').not('.locked');
 			$.glue.sel.none();
