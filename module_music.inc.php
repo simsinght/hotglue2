@@ -23,14 +23,18 @@ require_once('modules.inc.php');
 function music_render_object($args)
 {
 	$obj = $args['obj'];
-	if (!isset($obj['type']) || $obj['type'] != 'music') {
+	if (!isset($obj['type']) || ($obj['type'] != 'music' && $obj['type'] != 'music-lyrics')) {
 		return false;
 	}
 
 	// Create container element
 	$e = elem('div');
 	elem_attr($e, 'id', $obj['name']);
-	elem_add_class($e, 'music-player');
+	if ($obj['type'] == 'music-lyrics') {
+		elem_add_class($e, 'music-lyrics-screen');
+	} else {
+		elem_add_class($e, 'music-player');
+	}
 	elem_add_class($e, 'resizable');
 	elem_add_class($e, 'object');
 
@@ -52,6 +56,34 @@ function music_alter_render_early($args)
 {
 	$elem = &$args['elem'];
 	$obj = $args['obj'];
+
+	// Handle lyrics screen object
+	if (elem_has_class($elem, 'music-lyrics-screen')) {
+		if (elem_css($elem, 'background') === NULL && elem_css($elem, 'background-color') === NULL) {
+			elem_css($elem, 'background', 'rgba(0, 0, 0, 0.85)');
+		}
+		if (elem_css($elem, 'border-radius') === NULL) {
+			elem_css($elem, 'border-radius', '15px');
+		}
+		elem_attr($elem, 'data-music-parent', $obj['music-parent'] ?? '');
+
+		// Font size preset
+		$lrcSize = $obj['music-lyrics-size'] ?? 'md';
+		if (!in_array($lrcSize, array('sm', 'md', 'lg', 'xl'))) {
+			$lrcSize = 'md';
+		}
+		elem_add_class($elem, 'music-lrc-size-' . $lrcSize);
+		elem_attr($elem, 'data-music-lrc-size', $lrcSize);
+
+		$inner = elem('div');
+		elem_add_class($inner, 'music-lyrics-inner');
+		if ($args['edit']) {
+			elem_append($inner, '<div class="music-lrc-empty">Lyrics screen (' . $lrcSize . ')</div>');
+		}
+		elem_append($elem, $inner);
+		return true;
+	}
+
 	if (!elem_has_class($elem, 'music-player')) {
 		return false;
 	}
@@ -87,13 +119,21 @@ function music_alter_render_early($args)
 			'artist' => $t['artist'] ?? 'Unknown',
 			'audioFile' => $t['audioFile'] ?? '',
 			'coverFile' => $t['coverFile'] ?? '',
+			'lrc' => $t['lrc'] ?? '',
+			'karaokeAudioFile' => $t['karaokeAudioFile'] ?? '',
 			'audioUrl' => !empty($t['audioFile']) ? $base . rawurlencode($t['audioFile']) : '',
-			'coverUrl' => !empty($t['coverFile']) ? $base . rawurlencode($t['coverFile']) : ''
+			'coverUrl' => !empty($t['coverFile']) ? $base . rawurlencode($t['coverFile']) : '',
+			'karaokeAudioUrl' => !empty($t['karaokeAudioFile']) ? $base . rawurlencode($t['karaokeAudioFile']) : ''
 		);
 	}
 
 	elem_attr($elem, 'data-music-tracks', json_encode($tracksJs));
 	elem_attr($elem, 'data-music-current', $current);
+
+	// Link to lyrics screen if exists
+	if (!empty($obj['music-lyrics-obj'])) {
+		elem_attr($elem, 'data-music-lyrics-obj', $obj['music-lyrics-obj']);
+	}
 
 	// Default inline styles for the dark gradient look
 	if (elem_css($elem, 'background') === NULL && elem_css($elem, 'background-color') === NULL) {
@@ -213,6 +253,15 @@ function music_alter_render_early($args)
 	$controlsDiv = elem('div');
 	elem_add_class($controlsDiv, 'music-controls');
 
+	// Lyrics toggle (only if lyrics screen is linked)
+	if (!empty($obj['music-lyrics-obj'])) {
+		$lyricsToggle = elem('button');
+		elem_add_class($lyricsToggle, 'music-lyrics-toggle');
+		elem_add_class($lyricsToggle, 'music-lyrics-on');
+		elem_append($lyricsToggle, 'Lyrics');
+		elem_append($controlsDiv, $lyricsToggle);
+	}
+
 	// Previous button
 	$prevBtn = elem('button');
 	elem_add_class($prevBtn, 'music-prev');
@@ -231,6 +280,18 @@ function music_alter_render_early($args)
 	elem_append($nextBtn, '<svg width="28" height="28" viewBox="0 0 28 28" fill="white"><path d="M1 4l12 10L1 24z"/><path d="M12 4l12 10-12 10z"/></svg>');
 	elem_append($controlsDiv, $nextBtn);
 
+	// Instrumental toggle (only if any track has karaoke audio)
+	$hasAnyKaraoke = false;
+	foreach ($tracks as $t) {
+		if (!empty($t['karaokeAudioFile'])) { $hasAnyKaraoke = true; break; }
+	}
+	if ($hasAnyKaraoke) {
+		$instrToggle = elem('button');
+		elem_add_class($instrToggle, 'music-instrumental-toggle');
+		elem_append($instrToggle, 'Instrumental');
+		elem_append($controlsDiv, $instrToggle);
+	}
+
 	elem_append($elem, $controlsDiv);
 
 	return true;
@@ -245,11 +306,15 @@ function music_save_state($args)
 	$elem = &$args['elem'];
 	$obj = &$args['obj'];
 
-	if (!elem_has_class($elem, 'music-player')) {
+	if (!elem_has_class($elem, 'music-player') && !elem_has_class($elem, 'music-lyrics-screen')) {
 		return false;
 	}
 
-	$obj['type'] = 'music';
+	if (elem_has_class($elem, 'music-lyrics-screen')) {
+		$obj['type'] = 'music-lyrics';
+	} else {
+		$obj['type'] = 'music';
+	}
 	$obj['module'] = 'music';
 
 	// Save current track index
@@ -313,11 +378,75 @@ function music_render_page_early($args)
 						var timeElapsed = player.querySelector(".music-time-elapsed");
 						var timeRemaining = player.querySelector(".music-time-remaining");
 
+						// Lyrics screen
+						var lyricsScreenId = player.getAttribute("data-music-lyrics-obj");
+						var lyricsScreen = lyricsScreenId ? document.getElementById(lyricsScreenId) : null;
+						var lyricsInner = lyricsScreen ? lyricsScreen.querySelector(".music-lyrics-inner") : null;
+						var currentLRC = [];
+						var lastLyricIndex = -1;
+						var lyricsHideTimer = null;
+						var lyricsEnabled = true;
+						var lyricsToggle = player.querySelector(".music-lyrics-toggle");
+
+						var instrumentalEnabled = false;
+						var instrumentalToggle = player.querySelector(".music-instrumental-toggle");
+						// Hide lyrics screen until playback starts
+						if (lyricsScreen) lyricsScreen.style.display = "none";
+
 						function formatTime(s) {
 							if (!s || !isFinite(s)) return "0:00";
 							var m = Math.floor(s / 60);
 							var sec = Math.floor(s % 60);
 							return m + ":" + (sec < 10 ? "0" : "") + sec;
+						}
+
+						function parseLRC(text) {
+							if (!text) return [];
+							var lines = [];
+							var raw = text.split("\n");
+							for (var i = 0; i < raw.length; i++) {
+								var m = raw[i].match(/^\[(\d+):(\d+)[\.:](\d+)\]\s*(.*)/);
+								if (m) {
+									var t = parseInt(m[1]) * 60 + parseInt(m[2]) + parseInt(m[3]) / (m[3].length === 3 ? 1000 : 100);
+									var txt = m[4].trim();
+									if (txt) lines.push({ time: t, text: txt });
+								}
+							}
+							return lines;
+						}
+
+						function getAudioUrl() {
+							var track = tracks[currentTrack];
+							return (instrumentalEnabled && track.karaokeAudioUrl) ? track.karaokeAudioUrl : (track.audioUrl || "");
+						}
+
+						function renderLyrics() {
+							var track = tracks[currentTrack];
+							var hasLrc = !!(track.lrc);
+							var hasKaraoke = !!(track.karaokeAudioUrl);
+							// Show/hide toggle buttons based on current track
+							if (lyricsToggle) {
+								lyricsToggle.style.display = hasLrc ? "" : "none";
+							}
+							if (instrumentalToggle) {
+								instrumentalToggle.style.display = hasKaraoke ? "" : "none";
+								if (!hasKaraoke && instrumentalEnabled) {
+									instrumentalEnabled = false;
+									instrumentalToggle.className = "music-instrumental-toggle";
+								}
+							}
+							if (!lyricsInner) return;
+							currentLRC = parseLRC(track.lrc || "");
+							lastLyricIndex = -1;
+							if (currentLRC.length === 0) {
+								lyricsInner.innerHTML = "<div class=\"music-lrc-empty\">No lyrics</div>";
+								return;
+							}
+							var h = "";
+							for (var i = 0; i < currentLRC.length; i++) {
+								h += "<div class=\"music-lrc-line\">" + currentLRC[i].text + "</div>";
+							}
+							lyricsInner.innerHTML = h;
 						}
 
 						function updatePlayer() {
@@ -327,10 +456,11 @@ function music_render_page_early($args)
 							if (coverImg) coverImg.src = track.coverUrl || "";
 							audio.pause();
 							audio.currentTime = 0;
+							var url = getAudioUrl();
 							var srcMp4 = player.querySelector(".music-source-mp4");
 							var srcMpeg = player.querySelector(".music-source-mpeg");
-							if (srcMp4) srcMp4.setAttribute("src", track.audioUrl || "");
-							if (srcMpeg) srcMpeg.setAttribute("src", track.audioUrl || "");
+							if (srcMp4) srcMp4.setAttribute("src", url);
+							if (srcMpeg) srcMpeg.setAttribute("src", url);
 							audio.load();
 							playIcon.style.display = "";
 							pauseIcon.style.display = "none";
@@ -353,6 +483,7 @@ function music_render_page_early($args)
 								})()
 								});
 							}
+							renderLyrics();
 						}
 
 						function togglePlay() {
@@ -426,12 +557,16 @@ function music_render_page_early($args)
 							}
 						});
 
-						// Sync play/pause icon + Media Session playback state
+						// Sync play/pause icon + Media Session playback state + lyrics visibility
 						audio.addEventListener("play", function() {
 							playIcon.style.display = "none";
 							pauseIcon.style.display = "";
 							if ("mediaSession" in navigator) {
 								navigator.mediaSession.playbackState = "playing";
+							}
+							if (lyricsScreen && lyricsEnabled && currentLRC.length > 0) {
+								if (lyricsHideTimer) { clearTimeout(lyricsHideTimer); lyricsHideTimer = null; }
+								lyricsScreen.style.display = "";
 							}
 						});
 
@@ -440,6 +575,11 @@ function music_render_page_early($args)
 							pauseIcon.style.display = "none";
 							if ("mediaSession" in navigator) {
 								navigator.mediaSession.playbackState = "paused";
+							}
+							if (lyricsScreen) {
+								lyricsHideTimer = setTimeout(function() {
+									lyricsScreen.style.display = "none";
+								}, 500);
 							}
 						});
 
@@ -466,6 +606,27 @@ function music_render_page_early($args)
 										playbackRate: audio.playbackRate,
 										position: audio.currentTime
 									});
+								}
+							}
+							// Sync lyrics
+							if (lyricsInner && currentLRC.length > 0) {
+								var ct = audio.currentTime;
+								var idx = -1;
+								for (var l = currentLRC.length - 1; l >= 0; l--) {
+									if (currentLRC[l].time <= ct) { idx = l; break; }
+								}
+								if (idx !== lastLyricIndex) {
+									lastLyricIndex = idx;
+									var lineEls = lyricsInner.querySelectorAll(".music-lrc-line");
+									for (var l = 0; l < lineEls.length; l++) {
+										if (l === idx) {
+											lineEls[l].classList.add("music-lrc-active");
+											var targetTop = lineEls[l].offsetTop - (lyricsInner.clientHeight / 2) + (lineEls[l].offsetHeight / 2);
+											lyricsInner.scrollTop = Math.max(0, targetTop);
+										} else {
+											lineEls[l].classList.remove("music-lrc-active");
+										}
+									}
 								}
 							}
 						});
@@ -509,6 +670,52 @@ function music_render_page_early($args)
 						playPauseBtn.addEventListener("click", function(e) { e.stopPropagation(); togglePlay(); });
 						nextBtn.addEventListener("click", function(e) { e.stopPropagation(); nextTrack(); });
 
+						// Lyrics toggle
+						if (lyricsToggle) {
+							lyricsToggle.addEventListener("click", function(e) {
+								e.stopPropagation();
+								lyricsEnabled = !lyricsEnabled;
+								this.classList.toggle("music-lyrics-on", lyricsEnabled);
+								if (lyricsScreen) {
+									if (lyricsEnabled && !audio.paused && currentLRC.length > 0) {
+										if (lyricsHideTimer) { clearTimeout(lyricsHideTimer); lyricsHideTimer = null; }
+										lyricsScreen.style.display = "";
+									} else if (!lyricsEnabled) {
+										lyricsScreen.style.display = "none";
+									}
+								}
+							});
+						}
+
+						// Instrumental toggle — swap audio source, preserve position
+						if (instrumentalToggle) {
+							instrumentalToggle.addEventListener("click", function(e) {
+								e.stopPropagation();
+								instrumentalEnabled = !instrumentalEnabled;
+								this.classList.toggle("music-instrumental-on", instrumentalEnabled);
+								var wasPlaying = !audio.paused;
+								var pos = audio.currentTime;
+								var url = getAudioUrl();
+								var srcMp4 = player.querySelector(".music-source-mp4");
+								var srcMpeg = player.querySelector(".music-source-mpeg");
+								if (srcMp4) srcMp4.setAttribute("src", url);
+								if (srcMpeg) srcMpeg.setAttribute("src", url);
+								audio.load();
+								var resume = function() {
+									audio.currentTime = pos;
+									if (wasPlaying) {
+										var p = audio.play();
+										if (p) p.catch(function() {});
+									}
+								};
+								if (audio.readyState >= 3) {
+									resume();
+								} else {
+									audio.addEventListener("canplay", resume, { once: true });
+								}
+							});
+						}
+
 						// Set initial Media Session metadata
 						if ("mediaSession" in navigator && tracks[currentTrack]) {
 							var initTrack = tracks[currentTrack];
@@ -523,6 +730,9 @@ function music_render_page_early($args)
 								] : []
 							});
 						}
+
+						// Initial lyrics render
+						renderLyrics();
 
 					})(players[i]);
 				}
@@ -814,5 +1024,180 @@ function music_set_size($args)
 }
 
 register_service('music.set_size', 'music_set_size', array('auth'=>true));
+
+
+/**
+ *	Fetch synced lyrics from lrclib.net
+ */
+function music_fetch_lyrics($args)
+{
+	if (empty($args['track_name'])) {
+		return response('Required argument "track_name" is missing', 400);
+	}
+
+	$params = array(
+		'track_name' => $args['track_name']
+	);
+	if (!empty($args['artist_name'])) {
+		$params['artist_name'] = $args['artist_name'];
+	}
+
+	$url = 'https://lrclib.net/api/search?' . http_build_query($params);
+
+	$ctx = stream_context_create(array('http' => array(
+		'header' => "User-Agent: hotglue2/1.0\r\n",
+		'timeout' => 10
+	)));
+
+	$result = @file_get_contents($url, false, $ctx);
+	if ($result === false) {
+		return response('Failed to fetch lyrics from lrclib.net', 500);
+	}
+
+	$data = json_decode($result, true);
+	if (!is_array($data)) {
+		return response('Invalid response from lyrics API', 500);
+	}
+
+	// Filter to entries with synced lyrics
+	$results = array();
+	foreach ($data as $item) {
+		if (!empty($item['syncedLyrics'])) {
+			$results[] = array(
+				'trackName' => $item['trackName'] ?? '',
+				'artistName' => $item['artistName'] ?? '',
+				'albumName' => $item['albumName'] ?? '',
+				'duration' => $item['duration'] ?? 0,
+				'syncedLyrics' => $item['syncedLyrics']
+			);
+		}
+	}
+
+	return response($results);
+}
+
+register_service('music.fetch_lyrics', 'music_fetch_lyrics', array('auth'=>true));
+
+
+/**
+ *	Create a lyrics screen object linked to a music player
+ */
+function music_create_lyrics($args)
+{
+	load_modules('glue');
+
+	if (empty($args['page'])) {
+		return response('Required argument "page" is missing', 400);
+	}
+	if (empty($args['parent'])) {
+		return response('Required argument "parent" is missing', 400);
+	}
+
+	$obj = create_object(array('page' => $args['page']));
+	if ($obj['#error']) {
+		return $obj;
+	}
+	$obj = $obj['#data'];
+
+	$obj['type'] = 'music-lyrics';
+	$obj['module'] = 'music';
+	$obj['music-parent'] = $args['parent'];
+
+	if (!empty($args['x'])) {
+		$obj['object-left'] = $args['x'];
+	}
+	if (!empty($args['y'])) {
+		$obj['object-top'] = $args['y'];
+	}
+	$obj['object-width'] = '350px';
+	$obj['object-height'] = '500px';
+
+	$ret = save_object($obj);
+	if ($ret['#error']) {
+		return $ret;
+	}
+
+	// Link to the parent music player
+	$parent = load_object(array('name' => $args['parent']));
+	if (!$parent['#error']) {
+		$parent = $parent['#data'];
+		$parent['music-lyrics-obj'] = $obj['name'];
+		save_object($parent);
+	}
+
+	$ret = render_object(array('name' => $obj['name'], 'edit' => true));
+	if ($ret['#error']) {
+		return $ret;
+	}
+
+	return response($ret['#data']);
+}
+
+register_service('music.create_lyrics', 'music_create_lyrics', array('auth'=>true));
+
+
+/**
+ *	Set lyrics screen font size
+ */
+function music_set_lyrics_size($args)
+{
+	load_modules('glue');
+
+	if (empty($args['name'])) {
+		return response('Required argument "name" is missing', 400);
+	}
+
+	$size = $args['size'] ?? 'md';
+	if (!in_array($size, array('sm', 'md', 'lg', 'xl'))) {
+		$size = 'md';
+	}
+
+	$obj = load_object(array('name' => $args['name']));
+	if ($obj['#error']) {
+		return response('Lyrics screen not found', 404);
+	}
+	$obj = $obj['#data'];
+
+	$obj['music-lyrics-size'] = $size;
+
+	$ret = save_object($obj);
+	if ($ret['#error']) {
+		return $ret;
+	}
+
+	$ret = render_object(array('name' => $obj['name'], 'edit' => true));
+	if ($ret['#error']) {
+		return $ret;
+	}
+
+	return response($ret['#data']);
+}
+
+register_service('music.set_lyrics_size', 'music_set_lyrics_size', array('auth'=>true));
+
+
+/**
+ *	implements delete_object
+ *
+ *	Clean up lyrics screen when music player is deleted
+ */
+function music_delete_object($args)
+{
+	$obj = $args['obj'];
+	if (!isset($obj['type'])) {
+		return false;
+	}
+
+	if ($obj['type'] == 'music' && !empty($obj['music-lyrics-obj'])) {
+		// Delete linked lyrics screen
+		load_modules('glue');
+		delete_object(array('name' => $obj['music-lyrics-obj']));
+	}
+
+	if ($obj['type'] == 'music' || $obj['type'] == 'music-lyrics') {
+		return true;
+	}
+	return false;
+}
 
 ?>

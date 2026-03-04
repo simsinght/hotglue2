@@ -505,6 +505,10 @@ $.glue.music = function() {
 			html += '<button class="music-replace-audio" style="padding:6px 12px;cursor:pointer;">Replace Audio</button>';
 			html += ' <button class="music-replace-cover" style="padding:6px 12px;cursor:pointer;">Replace Cover</button>';
 			html += '</div>';
+			html += '<div style="margin-bottom:12px;">';
+			html += '<button class="music-upload-instrumental" style="padding:6px 12px;cursor:pointer;">Instrumental Track</button>';
+			html += '<span class="music-instrumental-status" style="margin-left:8px;font-size:12px;color:' + (track.karaokeAudioFile ? '#2a2' : '#888') + ';">' + (track.karaokeAudioFile ? 'Added' : 'None') + '</span>';
+			html += '</div>';
 			html += '<div style="text-align:right;">';
 			html += '<button class="music-edit-cancel" style="padding:8px 16px;cursor:pointer;margin-right:8px;">Cancel</button>';
 			html += '<button class="music-edit-save" style="padding:8px 16px;cursor:pointer;">Save</button>';
@@ -536,6 +540,15 @@ $.glue.music = function() {
 				});
 			});
 
+			// Upload instrumental track
+			$(dialog).find('.music-upload-instrumental').click(function(e) {
+				e.stopPropagation();
+				self.uploadAudio(obj, function(filename) {
+					track.karaokeAudioFile = filename;
+					$(dialog).find('.music-instrumental-status').text('Added').css('color', '#2a2');
+				});
+			});
+
 			// Save
 			$(dialog).find('.music-edit-save').click(function(e) {
 				e.stopPropagation();
@@ -564,6 +577,313 @@ $.glue.music = function() {
 				if (e.target === this) {
 					$(overlay).remove();
 					self.manageTracks(obj);
+				}
+			});
+		},
+
+		/**
+		 *	Manage lyrics for tracks — fetch from lrclib.net or paste LRC
+		 */
+		manageLyrics: function(obj) {
+			var self = this;
+			var objId = $(obj).attr('id');
+
+			$.glue.backend({
+				method: 'music.get_data',
+				name: objId
+			}, function(data) {
+				if (!data) {
+					$.glue.error('Failed to load music data');
+					return;
+				}
+
+				var tracks = data['tracks'] || [];
+				if (tracks.length === 0) {
+					$.glue.error('Add some tracks first');
+					return;
+				}
+
+				var html = '<div class="music-lyrics-dialog" style="background:#fff;padding:20px;border-radius:5px;min-width:420px;max-height:80vh;overflow-y:auto;">';
+				html += '<h3 style="margin-top:0;">Manage Lyrics</h3>';
+
+				for (var i = 0; i < tracks.length; i++) {
+					var t = tracks[i];
+					var hasLrc = !!(t.lrc);
+					html += '<div class="music-lyrics-track" data-index="' + i + '" style="padding:10px;margin-bottom:10px;background:#f5f5f5;border-radius:4px;">';
+					html += '<div style="font-weight:bold;margin-bottom:6px;">' + (t.title || 'Untitled') + ' — ' + (t.artist || 'Unknown') + '</div>';
+					html += '<div style="margin-bottom:6px;color:' + (hasLrc ? '#2a2' : '#888') + ';font-size:13px;">';
+					if (hasLrc) {
+						var lineCount = t.lrc.split('\n').filter(function(l) { return l.match(/^\[/); }).length;
+						html += 'Synced lyrics (' + lineCount + ' lines)';
+					} else {
+						html += 'No lyrics';
+					}
+					html += '</div>';
+					html += '<button class="music-lrc-fetch" data-index="' + i + '" style="padding:4px 10px;cursor:pointer;margin-right:4px;">Fetch</button>';
+					html += '<button class="music-lrc-paste" data-index="' + i + '" style="padding:4px 10px;cursor:pointer;margin-right:4px;">Paste</button>';
+					if (hasLrc) {
+						html += '<button class="music-lrc-clear" data-index="' + i + '" style="padding:4px 10px;cursor:pointer;color:red;">Clear</button>';
+					}
+					html += '</div>';
+				}
+
+				html += '<div style="display:flex;justify-content:space-between;margin-top:15px;">';
+				html += '<button class="music-lrc-screen-btn" style="padding:8px 16px;cursor:pointer;">Show Lyrics Screen</button>';
+				html += '<button class="music-lrc-close" style="padding:8px 16px;cursor:pointer;">Close</button>';
+				html += '</div></div>';
+
+				var overlay = $('<div class="music-overlay" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10000;"></div>');
+				var dialog = $(html);
+				$(overlay).append(dialog);
+				$('body').append(overlay);
+
+				$(dialog).bind('mousedown click', function(e) { e.stopPropagation(); });
+
+				// Close
+				$(dialog).find('.music-lrc-close').click(function(e) {
+					e.stopPropagation();
+					$(overlay).remove();
+				});
+
+				$(overlay).click(function(e) {
+					if (e.target === this) $(overlay).remove();
+				});
+
+				// Fetch lyrics from lrclib.net
+				$(dialog).find('.music-lrc-fetch').click(function(e) {
+					e.stopPropagation();
+					var idx = parseInt($(this).attr('data-index'));
+					var track = tracks[idx];
+					var btn = $(this);
+					btn.text('Searching...').prop('disabled', true);
+
+					$.glue.backend({
+						method: 'music.fetch_lyrics',
+						track_name: track.title || '',
+						artist_name: track.artist || ''
+					}, function(results) {
+						btn.text('Fetch').prop('disabled', false);
+						if (!results || results.length === 0) {
+							alert('No synced lyrics found for "' + (track.title || '') + '"');
+							return;
+						}
+						// Show results picker
+						$(overlay).remove();
+						self._lrcPickerDialog(obj, tracks, idx, results);
+					});
+				});
+
+				// Paste LRC
+				$(dialog).find('.music-lrc-paste').click(function(e) {
+					e.stopPropagation();
+					var idx = parseInt($(this).attr('data-index'));
+					$(overlay).remove();
+					self._lrcPasteDialog(obj, tracks, idx);
+				});
+
+				// Clear lyrics
+				$(dialog).find('.music-lrc-clear').click(function(e) {
+					e.stopPropagation();
+					var idx = parseInt($(this).attr('data-index'));
+					if (confirm('Clear lyrics for "' + (tracks[idx].title || '') + '"?')) {
+						delete tracks[idx].lrc;
+						$.glue.backend({
+							method: 'music.update_tracks',
+							name: objId,
+							tracks: JSON.stringify(tracks)
+						}, function() {
+							$(overlay).remove();
+							self.refresh(obj);
+							self.manageLyrics(obj);
+						});
+					}
+				});
+
+				// Show/create lyrics screen
+				$(dialog).find('.music-lrc-screen-btn').click(function(e) {
+					e.stopPropagation();
+					$(overlay).remove();
+					self._ensureLyricsScreen(obj);
+				});
+			});
+		},
+
+		/**
+		 *	Show search results from lrclib.net and let user pick one
+		 */
+		_lrcPickerDialog: function(obj, tracks, trackIndex, results) {
+			var self = this;
+			var objId = $(obj).attr('id');
+
+			var html = '<div style="background:#fff;padding:20px;border-radius:5px;min-width:420px;max-height:80vh;overflow-y:auto;">';
+			html += '<h3 style="margin-top:0;">Select Lyrics</h3>';
+			html += '<p style="color:#666;font-size:13px;">Found ' + results.length + ' version(s) with synced lyrics:</p>';
+
+			for (var i = 0; i < results.length; i++) {
+				var r = results[i];
+				var dur = r.duration ? Math.floor(r.duration / 60) + ':' + ('0' + Math.floor(r.duration % 60)).slice(-2) : '?';
+				html += '<div class="music-lrc-result" data-index="' + i + '" style="padding:10px;margin-bottom:8px;background:#f5f5f5;border-radius:4px;cursor:pointer;border:2px solid transparent;">';
+				html += '<div style="font-weight:bold;">' + (r.trackName || '') + '</div>';
+				html += '<div style="font-size:13px;color:#666;">' + (r.artistName || '') + ' — ' + (r.albumName || '') + ' (' + dur + ')</div>';
+				html += '</div>';
+			}
+
+			html += '<div style="text-align:right;margin-top:15px;">';
+			html += '<button class="music-lrc-pick-cancel" style="padding:8px 16px;cursor:pointer;">Cancel</button>';
+			html += '</div></div>';
+
+			var overlay = $('<div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10000;"></div>');
+			var dialog = $(html);
+			$(overlay).append(dialog);
+			$('body').append(overlay);
+
+			$(dialog).bind('mousedown click', function(e) { e.stopPropagation(); });
+
+			$(dialog).find('.music-lrc-result').click(function(e) {
+				e.stopPropagation();
+				var idx = parseInt($(this).attr('data-index'));
+				tracks[trackIndex].lrc = results[idx].syncedLyrics;
+				$.glue.backend({
+					method: 'music.update_tracks',
+					name: objId,
+					tracks: JSON.stringify(tracks)
+				}, function() {
+					$(overlay).remove();
+					self.refresh(obj);
+					self.manageLyrics(obj);
+				});
+			});
+
+			$(dialog).find('.music-lrc-pick-cancel').click(function(e) {
+				e.stopPropagation();
+				$(overlay).remove();
+				self.manageLyrics(obj);
+			});
+
+			$(overlay).click(function(e) {
+				if (e.target === this) {
+					$(overlay).remove();
+					self.manageLyrics(obj);
+				}
+			});
+		},
+
+		/**
+		 *	Dialog to paste LRC text manually
+		 */
+		_lrcPasteDialog: function(obj, tracks, trackIndex) {
+			var self = this;
+			var objId = $(obj).attr('id');
+			var existing = tracks[trackIndex].lrc || '';
+
+			var html = '<div style="background:#fff;padding:20px;border-radius:5px;min-width:450px;">';
+			html += '<h3 style="margin-top:0;">Paste LRC Lyrics</h3>';
+			html += '<p style="color:#666;font-size:13px;margin-bottom:8px;">Paste synced lyrics in LRC format ([mm:ss.xx] text):</p>';
+			html += '<textarea class="music-lrc-textarea" style="width:100%;height:300px;font-family:monospace;font-size:12px;padding:8px;box-sizing:border-box;resize:vertical;">' + existing + '</textarea>';
+			html += '<div style="text-align:right;margin-top:12px;">';
+			html += '<button class="music-lrc-paste-cancel" style="padding:8px 16px;cursor:pointer;margin-right:8px;">Cancel</button>';
+			html += '<button class="music-lrc-paste-save" style="padding:8px 16px;cursor:pointer;">Save</button>';
+			html += '</div></div>';
+
+			var overlay = $('<div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10000;"></div>');
+			var dialog = $(html);
+			$(overlay).append(dialog);
+			$('body').append(overlay);
+
+			$(dialog).bind('mousedown click', function(e) { e.stopPropagation(); });
+
+			$(dialog).find('.music-lrc-paste-save').click(function(e) {
+				e.stopPropagation();
+				var lrc = $(dialog).find('.music-lrc-textarea').val().trim();
+				tracks[trackIndex].lrc = lrc || '';
+				$.glue.backend({
+					method: 'music.update_tracks',
+					name: objId,
+					tracks: JSON.stringify(tracks)
+				}, function() {
+					$(overlay).remove();
+					self.refresh(obj);
+					self.manageLyrics(obj);
+				});
+			});
+
+			$(dialog).find('.music-lrc-paste-cancel').click(function(e) {
+				e.stopPropagation();
+				$(overlay).remove();
+				self.manageLyrics(obj);
+			});
+
+			$(overlay).click(function(e) {
+				if (e.target === this) {
+					$(overlay).remove();
+					self.manageLyrics(obj);
+				}
+			});
+		},
+
+		/**
+		 *	Create or show the lyrics screen object
+		 */
+		_ensureLyricsScreen: function(obj) {
+			var self = this;
+			var objId = $(obj).attr('id');
+			var existingId = $(obj).attr('data-music-lyrics-obj');
+
+			if (existingId) {
+				// Lyrics screen already exists — make sure it's visible
+				var el = document.getElementById(existingId);
+				if (el) {
+					$(el).show();
+					$.glue.sel.select($(el));
+				}
+				return;
+			}
+
+			// Create new lyrics screen next to the player
+			var playerPos = $(obj).position();
+			var playerWidth = $(obj).outerWidth();
+			var x = (playerPos.left + playerWidth + 20) + 'px';
+			var y = playerPos.top + 'px';
+
+			$.glue.backend({
+				method: 'music.create_lyrics',
+				page: $.glue.page,
+				parent: objId,
+				x: x,
+				y: y
+			}, function(html) {
+				if (html) {
+					var newElem = $(html);
+					$('body').append(newElem);
+					$.glue.object.register(newElem);
+					$.glue.sel.select(newElem);
+					// Update parent's data attribute
+					$(obj).attr('data-music-lyrics-obj', newElem.attr('id'));
+					// Re-render the parent to pick up the link
+					self.refresh(obj);
+				}
+			});
+		},
+
+		/**
+		 *	Cycle lyrics screen font size: sm → md → lg → xl → sm
+		 */
+		cycleLyricsSize: function(obj) {
+			var self = this;
+			var current = $(obj).attr('data-music-lrc-size') || 'md';
+			var order = ['sm', 'md', 'lg', 'xl'];
+			var next = order[(order.indexOf(current) + 1) % order.length];
+
+			$.glue.backend({
+				method: 'music.set_lyrics_size',
+				name: $(obj).attr('id'),
+				size: next
+			}, function(html) {
+				if (html) {
+					var newObj = $(html);
+					$(obj).replaceWith(newObj);
+					$.glue.object.register(newObj);
+					$.glue.sel.select(newObj);
 				}
 			});
 		},
@@ -625,6 +945,14 @@ $(document).ready(function() {
 	});
 	$.glue.contextmenu.register('music-player', 'music-size', elem);
 
+	// Lyrics / karaoke button
+	elem = $('<img src="' + $.glue.base_url + 'modules/music/music-lyrics.png" alt="btn" title="lyrics / karaoke" width="32" height="32">');
+	$(elem).bind('click', function(e) {
+		var obj = $(this).data('owner');
+		$.glue.music.manageLyrics(obj);
+	});
+	$.glue.contextmenu.register('music-player', 'music-lyrics', elem);
+
 	// Add track button
 	elem = $('<img src="' + $.glue.base_url + 'modules/music/music-add.png" alt="btn" title="add track" width="32" height="32">');
 	$(elem).bind('click', function(e) {
@@ -632,6 +960,16 @@ $(document).ready(function() {
 		$.glue.music.addTrack(obj);
 	});
 	$.glue.contextmenu.register('music-player', 'music-add', elem);
+
+	//
+	// Lyrics screen context menu — font size
+	//
+	elem = $('<img src="' + $.glue.base_url + 'modules/music/music-size.png" alt="btn" title="cycle text size (sm/md/lg/xl)" width="32" height="32">');
+	$(elem).bind('click', function(e) {
+		var obj = $(this).data('owner');
+		$.glue.music.cycleLyricsSize(obj);
+	});
+	$.glue.contextmenu.register('music-lyrics-screen', 'music-lrc-size', elem);
 
 	//
 	// Create menu item

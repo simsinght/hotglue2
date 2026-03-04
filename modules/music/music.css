@@ -108,6 +108,43 @@
 	display: flex;
 	align-items: center;
 	justify-content: center;
+	position: relative;
+}
+
+.music-lyrics-toggle {
+	position: absolute;
+	left: 0;
+	bottom: -16px;
+	background: none;
+	border: none;
+	color: rgba(255, 255, 255, 0.35);
+	font-size: 11px;
+	cursor: pointer;
+	padding: 2px 0;
+	font-family: 'Arial', sans-serif;
+	letter-spacing: 0.5px;
+}
+
+.music-lyrics-toggle.music-lyrics-on {
+	color: rgba(255, 255, 255, 0.8);
+}
+
+.music-instrumental-toggle {
+	position: absolute;
+	right: 0;
+	bottom: -16px;
+	background: none;
+	border: none;
+	color: rgba(255, 255, 255, 0.35);
+	font-size: 11px;
+	cursor: pointer;
+	padding: 2px 0;
+	font-family: 'Arial', sans-serif;
+	letter-spacing: 0.5px;
+}
+
+.music-instrumental-toggle.music-instrumental-on {
+	color: rgba(255, 255, 255, 0.8);
 }
 
 .music-controls button {
@@ -258,3 +295,66 @@
 	width: 38px;
 	height: 38px;
 }
+
+/* ========================================
+   Lyrics screen (karaoke)
+   ======================================== */
+.music-lyrics-screen {
+	position: absolute;
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+}
+
+.music-lyrics-screen > .ui-resizable-handle {
+	z-index: 10;
+}
+
+.music-lyrics-inner {
+	flex: 1;
+	overflow-y: auto;
+	padding: 30px 25px;
+	text-align: center;
+	font-family: 'Arial', sans-serif;
+	position: relative;
+	-ms-overflow-style: none;
+	scrollbar-width: none;
+}
+
+.music-lyrics-inner::-webkit-scrollbar {
+	display: none;
+}
+
+.music-lrc-line {
+	color: rgba(255, 255, 255, 0.3);
+	font-size: 20px;
+	line-height: 2;
+	transition: color 0.3s ease, text-shadow 0.3s ease;
+	padding: 2px 0;
+}
+
+.music-lrc-line.music-lrc-active {
+	color: #fff;
+	text-shadow: 0 0 20px rgba(255, 255, 255, 0.4);
+}
+
+.music-lrc-empty {
+	color: rgba(255, 255, 255, 0.3);
+	text-align: center;
+	padding-top: 40%;
+	font-style: italic;
+	font-size: 16px;
+}
+
+/* Lyrics font size presets */
+.music-lrc-size-sm .music-lrc-line { font-size: 16px; }
+.music-lrc-size-sm .music-lrc-empty { font-size: 14px; }
+
+.music-lrc-size-md .music-lrc-line { font-size: 20px; }
+.music-lrc-size-md .music-lrc-empty { font-size: 16px; }
+
+.music-lrc-size-lg .music-lrc-line { font-size: 26px; }
+.music-lrc-size-lg .music-lrc-empty { font-size: 18px; }
+
+.music-lrc-size-xl .music-lrc-line { font-size: 34px; }
+.music-lrc-size-xl .music-lrc-empty { font-size: 20px; }
