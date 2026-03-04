@@ -238,6 +238,117 @@ function page_set_grid($args)
 register_service('page.set_grid', 'page_set_grid', array('auth'=>true));
 
 
+function page_render_page_late($args)
+{
+	// In view mode, wrap all objects in a content-container div with
+	// explicit dimensions so mobile browsers know the content bounds
+	// (enables proper pinch-zoom, prevents back-swipe on min zoom)
+	if ($args['edit']) {
+		return;
+	}
+
+	// Scan object files to compute content bounds and find view anchors
+	$page_dir = CONTENT_DIR.'/'.str_replace('.', '/', $args['page']);
+	$maxR = 0;
+	$maxB = 0;
+
+	// View anchor positions
+	$tl_left = null;
+	$tl_top = null;
+	$br_right = null;
+
+	$files = @scandir($page_dir);
+	if ($files) {
+		foreach ($files as $f) {
+			if ($f == '.' || $f == '..' || $f == 'page' || $f == 'shared' || $f == 'userhead') {
+				continue;
+			}
+			$fn = $page_dir.'/'.$f;
+			if (!is_file($fn)) {
+				continue;
+			}
+
+			$content = @file_get_contents($fn);
+			if ($content === false) {
+				continue;
+			}
+
+			$left = 0; $top = 0; $width = 0; $height = 0;
+			if (preg_match('/^object-left:(.+)$/m', $content, $m)) {
+				$left = floatval(trim($m[1]));
+			}
+			if (preg_match('/^object-top:(.+)$/m', $content, $m)) {
+				$top = floatval(trim($m[1]));
+			}
+			if (preg_match('/^object-width:(.+)$/m', $content, $m)) {
+				$width = floatval(trim($m[1]));
+			}
+			if (preg_match('/^object-height:(.+)$/m', $content, $m)) {
+				$height = floatval(trim($m[1]));
+			}
+
+			$r = $left + $width;
+			$b = $top + $height;
+			if ($r > $maxR) $maxR = $r;
+			if ($b > $maxB) $maxB = $b;
+
+			// Check for view-anchor property
+			if (preg_match('/^view-anchor:(.+)$/m', $content, $m)) {
+				$anchor = trim($m[1]);
+				if ($anchor === 'top-left') {
+					$tl_left = round($left);
+					$tl_top = round($top);
+				} else if ($anchor === 'bottom-right') {
+					$br_right = round($left + $width);
+				}
+			}
+		}
+	}
+
+	$maxR = ceil($maxR) + 50;
+	$maxB = ceil($maxB) + 50;
+
+	// Always use device-width viewport (iOS pinch-zoom works reliably with this)
+	html_add_head_inline('<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=0.1, maximum-scale=10">', 0);
+
+	// Set zoom and scroll based on anchors
+	if ($tl_left !== null && $br_right !== null) {
+		$vp_width = $br_right - $tl_left;
+		if ($vp_width > 0) {
+			// Hide body until zoom + scroll are applied (prevents flash)
+			html_add_css_inline('body { opacity: 0; }', 0);
+			// Use CSS zoom on body to fit anchor span to screen width.
+			// Viewport stays at scale=1 so pinch-out has full 10x range (1.0 → 0.1).
+			$code = 'document.addEventListener("DOMContentLoaded", function() {';
+			$code .= 'var z = screen.width / '.$vp_width.';';
+			$code .= 'if (z < 1) document.body.style.zoom = z; else z = 1;';
+			$code .= 'window.scrollTo(Math.round('.$tl_left.' * z), Math.round('.$tl_top.' * z));';
+			$code .= 'document.body.style.opacity = "1";';
+			$code .= '});';
+			html_add_js_inline($code, 10, 'view anchor zoom and scroll');
+		}
+	} else if ($tl_left !== null) {
+		// Only top-left anchor: just scroll, no zoom
+		$code = 'document.addEventListener("DOMContentLoaded", function() { window.scrollTo('.$tl_left.', '.$tl_top.'); });';
+		html_add_js_inline($code, 10, 'scroll to view anchor');
+	}
+
+	// Wrap body contents in a content-container div
+	$bdy = &body();
+	$container = elem('div');
+	elem_add_class($container, 'content-container');
+	elem_css($container, 'position', 'relative');
+	elem_css($container, 'width', $maxR.'px');
+	elem_css($container, 'height', $maxB.'px');
+	elem_css($container, 'min-height', '100vh');
+
+	if (isset($bdy['val'])) {
+		$container['val'] = $bdy['val'];
+		$bdy['val'] = array($container);
+	}
+}
+
+
 function page_upload($args)
 {
 	// only handle the file if the frontend wants us to
