@@ -178,6 +178,18 @@ function journal_alter_render_early($args)
 		elem_attr($elem, 'data-alt-objects', json_encode($altMap));
 	}
 
+	// Build page objects map (page index => array of object names)
+	$pageObjMap = array();
+	foreach ($pages as $index => $page) {
+		$pageObjs = $page['pageObjects'] ?? array();
+		if (!empty($pageObjs)) {
+			$pageObjMap[$index] = $pageObjs;
+		}
+	}
+	if (!empty($pageObjMap)) {
+		elem_attr($elem, 'data-page-objects', json_encode($pageObjMap));
+	}
+
 	// Add ALT toggle button (hidden by default, JS shows it when current page has alt text)
 	$altToggle = elem('button');
 	elem_add_class($altToggle, 'journal-alt-toggle');
@@ -300,6 +312,37 @@ function journal_render_page_early($args)
 					}
 				}
 
+				function getPageObjMap(journal) {
+					try { return JSON.parse(journal.getAttribute("data-page-objects") || "{}"); }
+					catch(e) { return {}; }
+				}
+
+				function getPageObjIds(journal, pageIndex) {
+					var map = getPageObjMap(journal);
+					return map[pageIndex] || [];
+				}
+
+				function showPageObjects(ids) {
+					for (var k = 0; k < ids.length; k++) {
+						var el = document.getElementById(ids[k]);
+						if (el) el.style.display = "";
+					}
+				}
+
+				function hidePageObjects(ids) {
+					for (var k = 0; k < ids.length; k++) {
+						var el = document.getElementById(ids[k]);
+						if (el) el.style.display = "none";
+					}
+				}
+
+				function hideAllPageObjects(journal) {
+					var map = getPageObjMap(journal);
+					for (var p in map) {
+						hidePageObjects(map[p]);
+					}
+				}
+
 				function removeDismissBtn(journal) {
 					var existing = journal._altDismissBtn;
 					if (existing && existing.parentNode) {
@@ -354,6 +397,11 @@ function journal_render_page_early($args)
 						// Hide all alt text objects on load
 						hideAllAltObjects(journal);
 
+						// Hide all page objects, then show current page stickers
+						hideAllPageObjects(journal);
+						var startIdx = parseInt(journal.getAttribute("data-journal-current")) || 0;
+						showPageObjects(getPageObjIds(journal, startIdx));
+
 						// ALT toggle button
 						var altBtn = journal.querySelector(".journal-alt-toggle");
 						if (altBtn) {
@@ -383,9 +431,10 @@ function journal_render_page_early($args)
 							if (e.target.closest(".journal-alt-toggle")) return;
 							if (e.target.closest(".journal-alt-dismiss")) return;
 
-							// Hide current page alt objects before flipping (keep alt mode active)
+							// Hide current page stickers and alt objects before flipping
+							var curIdx = parseInt(journal.getAttribute("data-journal-current")) || 0;
+							hidePageObjects(getPageObjIds(journal, curIdx));
 							if (altShowing) {
-								var curIdx = parseInt(journal.getAttribute("data-journal-current")) || 0;
 								hideAltObjects(getAltIds(journal, curIdx));
 							}
 
@@ -430,6 +479,7 @@ function journal_render_page_early($args)
 									if (nextPage) nextPage.style.zIndex = 2;
 									journal.setAttribute("data-journal-current", next);
 									isAnimating = false;
+									showPageObjects(getPageObjIds(journal, next));
 									if (altShowing) {
 										var newIds = getAltIds(journal, next);
 										if (newIds.length > 0) {
@@ -469,6 +519,7 @@ function journal_render_page_early($args)
 									currentPage.style.visibility = "hidden";
 									journal.setAttribute("data-journal-current", next);
 									isAnimating = false;
+									showPageObjects(getPageObjIds(journal, next));
 									if (altShowing) {
 										var newIds = getAltIds(journal, next);
 										if (newIds.length > 0) {

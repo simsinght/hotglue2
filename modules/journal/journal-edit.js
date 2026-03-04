@@ -105,6 +105,7 @@ $.glue.journal = function() {
 				currentPage.css('visibility', 'hidden');
 				nextPage.css('z-index', 2);
 				$(obj).attr('data-journal-current', next);
+				self._showPageObjectsForPage(obj, next);
 				self._showAltAfterFlip(obj, next);
 			}, 600);
 		},
@@ -145,6 +146,7 @@ $.glue.journal = function() {
 				prevPage.find('.journal-page-right').removeClass('is-flipping');
 				currentPage.css('visibility', 'hidden');
 				$(obj).attr('data-journal-current', prev);
+				self._showPageObjectsForPage(obj, prev);
 				self._showAltAfterFlip(obj, prev);
 			}, 600);
 		},
@@ -174,6 +176,7 @@ $.glue.journal = function() {
 				}
 			});
 
+			this._showPageObjectsForPage(obj, start);
 			this.dismissAlt(obj);
 			this.updateAltBtn(obj);
 		},
@@ -244,6 +247,16 @@ $.glue.journal = function() {
 					e.stopPropagation();
 					var index = parseInt($(this).attr('data-index'));
 					if (confirm('Remove page ' + index + '?')) {
+						// Delete any sticker objects on this page before removing it
+						var pageStickers = (pages[index] && pages[index].pageObjects) || [];
+						for (var si = 0; si < pageStickers.length; si++) {
+							var stickerEl = document.getElementById(pageStickers[si]);
+							if (stickerEl) {
+								$.glue.object.unregister($(stickerEl));
+								$(stickerEl).remove();
+								$.glue.backend({ method: 'glue.delete_object', name: pageStickers[si] });
+							}
+						}
 						$.glue.backend({
 							method: 'journal.remove_page',
 							name: $(obj).attr('id'),
@@ -367,6 +380,142 @@ $.glue.journal = function() {
 			var json = JSON.stringify(altMap);
 			$(obj).attr('data-alt-objects', json === '{}' ? '' : json);
 			this.updateAltBtn(obj);
+		},
+
+		/**
+		 *	Get the page objects map from the data attribute
+		 */
+		_getPageObjMap: function(obj) {
+			try { return JSON.parse($(obj).attr('data-page-objects') || '{}'); }
+			catch(e) { return {}; }
+		},
+
+		/**
+		 *	Get page object IDs for a specific page
+		 */
+		_getPageObjIds: function(obj, pageIndex) {
+			var map = this._getPageObjMap(obj);
+			return map[pageIndex] || [];
+		},
+
+		/**
+		 *	Rebuild the data-page-objects attribute from pages data
+		 */
+		_syncPageObjAttr: function(obj, pages) {
+			var map = {};
+			for (var i = 0; i < pages.length; i++) {
+				var po = pages[i].pageObjects || [];
+				if (po.length > 0) {
+					map[i] = po;
+				}
+			}
+			var json = JSON.stringify(map);
+			$(obj).attr('data-page-objects', json === '{}' ? '' : json);
+		},
+
+		/**
+		 *	Hide all page objects, then show only the target page's objects
+		 */
+		_showPageObjectsForPage: function(obj, pageIndex) {
+			var map = this._getPageObjMap(obj);
+			// Deselect and hide all page objects
+			for (var p in map) {
+				var ids = map[p];
+				for (var i = 0; i < ids.length; i++) {
+					var el = document.getElementById(ids[i]);
+					if (el) {
+						if ($(el).hasClass('glue-selected')) {
+							$.glue.sel.deselect($(el));
+						}
+						$(el).hide();
+					}
+				}
+			}
+			// Show target page's objects
+			var targetIds = map[pageIndex] || [];
+			for (var i = 0; i < targetIds.length; i++) {
+				var el = document.getElementById(targetIds[i]);
+				if (el) $(el).show();
+			}
+		},
+
+		/**
+		 *	Add a sticker (any object) to the current journal page
+		 */
+		addSticker: function(obj) {
+			var self = this;
+			var current = parseInt($(obj).attr('data-journal-current')) || 0;
+			var journalPos = $(obj).offset();
+			var journalW = $(obj).outerWidth();
+			var journalH = $(obj).outerHeight();
+			var objZ = parseInt($(obj).css('z-index')) || 0;
+
+			// Center of journal in viewport coordinates
+			var centerX = journalPos.left + journalW / 2 - $(window).scrollLeft();
+			var centerY = journalPos.top + journalH / 2 - $(window).scrollTop();
+
+			// Watch for new objects added to body
+			var observer = new MutationObserver(function(mutations) {
+				for (var m = 0; m < mutations.length; m++) {
+					var added = mutations[m].addedNodes;
+					for (var n = 0; n < added.length; n++) {
+						var node = added[n];
+						if (node.nodeType === 1 && $(node).hasClass('object')) {
+							observer.disconnect();
+							clearTimeout(safetyTimeout);
+							// Reposition centered on journal
+							var elW = $(node).outerWidth() || 100;
+							var elH = $(node).outerHeight() || 80;
+							$(node).css({
+								'left': (journalPos.left + (journalW - elW) / 2) + 'px',
+								'top': (journalPos.top + (journalH - elH) / 2) + 'px',
+								'z-index': objZ + 1
+							});
+							$.glue.object.save($(node));
+							self._addStickerToPage(obj, current, $(node).attr('id'));
+							return;
+						}
+					}
+				}
+			});
+
+			observer.observe(document.body, { childList: true });
+
+			// Safety timeout: disconnect observer if user cancels
+			var safetyTimeout = setTimeout(function() {
+				observer.disconnect();
+			}, 60000);
+
+			// Show the standard "new" menu centered on journal
+			$.glue.menu.show('new', centerX, centerY);
+		},
+
+		/**
+		 *	Add a sticker object ID to a journal page's pageObjects array
+		 */
+		_addStickerToPage: function(obj, pageIndex, objId) {
+			var self = this;
+			$.glue.backend({
+				method: 'journal.get_data',
+				name: $(obj).attr('id')
+			}, function(data) {
+				if (!data) return;
+				var pages = data['pages'] || [];
+				if (pageIndex < 0 || pageIndex >= pages.length) return;
+
+				if (!pages[pageIndex].pageObjects) {
+					pages[pageIndex].pageObjects = [];
+				}
+				pages[pageIndex].pageObjects.push(objId);
+
+				$.glue.backend({
+					method: 'journal.update_pages',
+					name: $(obj).attr('id'),
+					pages: JSON.stringify(pages)
+				}, function() {
+					self._syncPageObjAttr(obj, pages);
+				});
+			});
 		},
 
 		/**
@@ -754,10 +903,20 @@ $('.journal').live('click', function(e) {
 		return;
 	}
 
-	// Hide current page's alt objects before flipping (but keep alt mode if active)
+	// Hide current page's stickers and alt objects before flipping
+	var currentIdx = parseInt($(this).attr('data-journal-current')) || 0;
+	var curPageObjIds = $.glue.journal._getPageObjIds(this, currentIdx);
+	for (var pi = 0; pi < curPageObjIds.length; pi++) {
+		var pel = document.getElementById(curPageObjIds[pi]);
+		if (pel) {
+			if ($(pel).hasClass('glue-selected')) {
+				$.glue.sel.deselect($(pel));
+			}
+			$(pel).hide();
+		}
+	}
 	var altWasShowing = $(this).data('altShowing');
 	if (altWasShowing) {
-		var currentIdx = parseInt($(this).attr('data-journal-current')) || 0;
 		var curIds = $.glue.journal._getAltIds(this, currentIdx);
 		for (var ai = 0; ai < curIds.length; ai++) {
 			var ael = document.getElementById(curIds[ai]);
@@ -805,10 +964,83 @@ $(document).bind('click', function(e) {
 
 
 $(document).ready(function() {
-	// Hide all alt text objects on initial load
+	// Hide all alt text objects on initial load and show current page stickers
 	$('.journal').each(function() {
 		$.glue.journal.dismissAlt(this);
 		$.glue.journal.updateAltBtn(this);
+		var start = parseInt($(this).attr('data-journal-current')) || 0;
+		$.glue.journal._showPageObjectsForPage(this, start);
+	});
+
+	// Clean up sticker (and alt) references when any object is deleted
+	$('.object').live('glue-unregister', function() {
+		var deletedId = $(this).attr('id');
+		if (!deletedId) return;
+		$('.journal').each(function() {
+			var journal = this;
+			var pageObjMap = $.glue.journal._getPageObjMap(journal);
+			var altMap = $.glue.journal._getAltMap(journal);
+			var found = false;
+
+			// Check pageObjects
+			for (var p in pageObjMap) {
+				var arr = pageObjMap[p];
+				var idx = $.inArray(deletedId, arr);
+				if (idx !== -1) {
+					found = true;
+					break;
+				}
+			}
+			// Check altObjects
+			for (var p in altMap) {
+				var arr = altMap[p];
+				var idx = $.inArray(deletedId, arr);
+				if (idx !== -1) {
+					found = true;
+					break;
+				}
+			}
+
+			if (!found) return;
+
+			// Fetch pages, remove the deleted ID, save
+			$.glue.backend({
+				method: 'journal.get_data',
+				name: $(journal).attr('id')
+			}, function(data) {
+				if (!data) return;
+				var pages = data['pages'] || [];
+				var changed = false;
+				for (var i = 0; i < pages.length; i++) {
+					// Clean pageObjects
+					var po = pages[i].pageObjects || [];
+					var poIdx = $.inArray(deletedId, po);
+					if (poIdx !== -1) {
+						po.splice(poIdx, 1);
+						pages[i].pageObjects = po;
+						changed = true;
+					}
+					// Clean altObjects
+					var ao = pages[i].altObjects || [];
+					var aoIdx = $.inArray(deletedId, ao);
+					if (aoIdx !== -1) {
+						ao.splice(aoIdx, 1);
+						pages[i].altObjects = ao;
+						changed = true;
+					}
+				}
+				if (changed) {
+					$.glue.backend({
+						method: 'journal.update_pages',
+						name: $(journal).attr('id'),
+						pages: JSON.stringify(pages)
+					}, function() {
+						$.glue.journal._syncPageObjAttr(journal, pages);
+						$.glue.journal._syncAltAttr(journal, pages);
+					});
+				}
+			});
+		});
 	});
 
 	//
@@ -863,6 +1095,14 @@ $(document).ready(function() {
 		$.glue.journal.editAltText(obj);
 	});
 	$.glue.contextmenu.register('journal', 'journal-alt', elem);
+
+	// Add sticker button
+	elem = $('<img src="' + $.glue.base_url + 'modules/journal/journal-sticker.png" alt="btn" title="add sticker to page" width="32" height="32">');
+	$(elem).bind('click', function(e) {
+		var obj = $(this).data('owner');
+		$.glue.journal.addSticker(obj);
+	});
+	$.glue.contextmenu.register('journal', 'journal-sticker', elem);
 
 
 	//
