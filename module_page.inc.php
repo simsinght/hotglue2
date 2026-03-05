@@ -325,12 +325,14 @@ function page_render_page_late($args)
 			$code .= 'var z = screen.width / '.$vp_width.';';
 			$code .= 'if (z >= 1) z = 1;';
 			$code .= 'var cc = document.querySelector(".content-container");';
-			$code .= 'if (cc && z < 1) cc.style.zoom = z;';
-			$code .= 'var vw = window.innerWidth, vh = window.innerHeight;';
-			$code .= 'var aw = '.$vp_width.' * z, ah = '.($br_bottom - $tl_top).' * z;';
-			$code .= 'var sx = '.$tl_left.' * z - Math.max(0, (vw - aw) / 2);';
-			$code .= 'var sy = '.$tl_top.' * z - Math.max(0, (vh - ah) / 2);';
-			$code .= 'window.scrollTo(Math.round(sx), Math.round(sy));';
+			$code .= 'if (cc && z < 1) {';
+			$code .= '  cc.style.transformOrigin = "0 0";';
+			$code .= '  cc.style.transform = "scale(" + z + ")";';
+			// Shrink the container's CSS dimensions so scrollable area matches visual size
+			$code .= '  cc.style.width = (parseFloat(cc.style.width) * z) + "px";';
+			$code .= '  cc.style.height = (parseFloat(cc.style.height) * z) + "px";';
+			$code .= '}';
+			$code .= 'window.scrollTo(Math.round('.$tl_left.' * z), Math.round('.$tl_top.' * z));';
 			$code .= 'document.body.style.opacity = "1";';
 			$code .= '});';
 			html_add_js_inline($code, 10, 'view anchor zoom and scroll');

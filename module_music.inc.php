@@ -111,21 +111,13 @@ function music_alter_render_early($args)
 	}
 	$base = base_url() . $content_relative . '/' . $pagename . '/shared/';
 
-	// Shared directory for reading LRC files
-	$shared_dir = CONTENT_DIR . '/' . $pagename . '/shared';
-
 	// Build tracks JSON with full URLs for JS
 	$tracksJs = array();
 	foreach ($tracks as $t) {
-		// Read LRC from file if available, fall back to legacy inline
-		$lrc = '';
+		$hasLrc = !empty($t['lrcFile']) || !empty($t['lrc']);
+		$lrcUrl = '';
 		if (!empty($t['lrcFile'])) {
-			$lrcPath = $shared_dir . '/' . $t['lrcFile'];
-			if (file_exists($lrcPath)) {
-				$lrc = file_get_contents($lrcPath);
-			}
-		} elseif (!empty($t['lrc'])) {
-			$lrc = $t['lrc'];
+			$lrcUrl = $base . rawurlencode($t['lrcFile']);
 		}
 
 		$tracksJs[] = array(
@@ -134,7 +126,8 @@ function music_alter_render_early($args)
 			'audioFile' => $t['audioFile'] ?? '',
 			'coverFile' => $t['coverFile'] ?? '',
 			'lrcFile' => $t['lrcFile'] ?? '',
-			'lrc' => $lrc,
+			'lrcUrl' => $lrcUrl,
+			'hasLrc' => $hasLrc,
 			'lrcOffset' => floatval($t['lrcOffset'] ?? 0),
 			'karaokeAudioFile' => $t['karaokeAudioFile'] ?? '',
 			'audioUrl' => !empty($t['audioFile']) ? $base . rawurlencode($t['audioFile']) : '',
@@ -269,16 +262,23 @@ function music_alter_render_early($args)
 	$controlsDiv = elem('div');
 	elem_add_class($controlsDiv, 'music-controls');
 
-	// Previous page (skip back)
+	// Page skip buttons — always render both if either is set, hide missing one for centering
 	$prevPage = $obj['music-prev-page'] ?? '';
-	if (!empty($prevPage)) {
-		$prevPageUrl = $prevPage;
-		if (strpos($prevPageUrl, 'http') !== 0 && strpos($prevPageUrl, '/') !== 0) {
-			$prevPageUrl = base_url() . $prevPageUrl;
-		}
+	$nextPage = $obj['music-next-page'] ?? '';
+	$hasAnyPageLink = !empty($prevPage) || !empty($nextPage);
+
+	if ($hasAnyPageLink) {
 		$prevPageBtn = elem('button');
 		elem_add_class($prevPageBtn, 'music-prev-page');
-		elem_attr($prevPageBtn, 'data-page', $prevPageUrl);
+		if (!empty($prevPage)) {
+			$prevPageUrl = $prevPage;
+			if (strpos($prevPageUrl, 'http') !== 0 && strpos($prevPageUrl, '/') !== 0) {
+				$prevPageUrl = base_url() . $prevPageUrl;
+			}
+			elem_attr($prevPageBtn, 'data-page', $prevPageUrl);
+		} else {
+			elem_css($prevPageBtn, 'visibility', 'hidden');
+		}
 		elem_append($prevPageBtn, '<svg width="22" height="22" viewBox="0 0 22 22"><rect x="1" y="4" width="3" height="14" rx="1" fill="white"/><path d="M18 4L8 11l10 7z" fill="white"/></svg>');
 		elem_append($controlsDiv, $prevPageBtn);
 	}
@@ -298,16 +298,18 @@ function music_alter_render_early($args)
 	elem_append($nextBtn, '<svg width="28" height="28" viewBox="0 0 28 28"><path d="M1 4l12 10L1 24z" fill="white"/><path d="M12 4l12 10-12 10z" fill="white"/></svg>');
 	elem_append($controlsDiv, $nextBtn);
 
-	// Next page (skip forward)
-	$nextPage = $obj['music-next-page'] ?? '';
-	if (!empty($nextPage)) {
-		$nextPageUrl = $nextPage;
-		if (strpos($nextPageUrl, 'http') !== 0 && strpos($nextPageUrl, '/') !== 0) {
-			$nextPageUrl = base_url() . $nextPageUrl;
-		}
+	if ($hasAnyPageLink) {
 		$nextPageBtn = elem('button');
 		elem_add_class($nextPageBtn, 'music-next-page');
-		elem_attr($nextPageBtn, 'data-page', $nextPageUrl);
+		if (!empty($nextPage)) {
+			$nextPageUrl = $nextPage;
+			if (strpos($nextPageUrl, 'http') !== 0 && strpos($nextPageUrl, '/') !== 0) {
+				$nextPageUrl = base_url() . $nextPageUrl;
+			}
+			elem_attr($nextPageBtn, 'data-page', $nextPageUrl);
+		} else {
+			elem_css($nextPageBtn, 'visibility', 'hidden');
+		}
 		elem_append($nextPageBtn, '<svg width="22" height="22" viewBox="0 0 22 22"><path d="M4 4l10 7-10 7z" fill="white"/><rect x="18" y="4" width="3" height="14" rx="1" fill="white"/></svg>');
 		elem_append($controlsDiv, $nextPageBtn);
 	}
@@ -473,7 +475,7 @@ function music_render_page_early($args)
 
 						function renderLyrics() {
 							var track = tracks[currentTrack];
-							var hasLrc = !!(track.lrc);
+							var hasLrc = !!(track.hasLrc);
 							var hasKaraoke = !!(track.karaokeAudioUrl);
 							// Show/hide toggle buttons based on current track
 							if (lyricsToggle) {
@@ -487,7 +489,33 @@ function music_render_page_early($args)
 								}
 							}
 							if (!lyricsInner) return;
-							currentLRC = parseLRC(track.lrc || "");
+							// If LRC already cached, render immediately
+							if (track._lrcText !== undefined) {
+								applyLRC(track._lrcText);
+								return;
+							}
+							// Fetch LRC from URL
+							if (track.lrcUrl) {
+								lyricsInner.innerHTML = "<div class=\"music-lrc-empty\">Loading...</div>";
+								var xhr = new XMLHttpRequest();
+								xhr.open("GET", track.lrcUrl, true);
+								xhr.onload = function() {
+									track._lrcText = xhr.status === 200 ? xhr.responseText : "";
+									// Only apply if still on same track
+									if (tracks[currentTrack] === track) applyLRC(track._lrcText);
+								};
+								xhr.onerror = function() {
+									track._lrcText = "";
+									if (tracks[currentTrack] === track) applyLRC("");
+								};
+								xhr.send();
+							} else {
+								applyLRC("");
+							}
+						}
+
+						function applyLRC(text) {
+							currentLRC = parseLRC(text);
 							lastLyricIndex = -1;
 							if (currentLRC.length === 0) {
 								lyricsInner.innerHTML = "<div class=\"music-lrc-empty\">No lyrics</div>";
