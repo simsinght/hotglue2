@@ -111,15 +111,31 @@ function music_alter_render_early($args)
 	}
 	$base = base_url() . $content_relative . '/' . $pagename . '/shared/';
 
+	// Shared directory for reading LRC files
+	$shared_dir = CONTENT_DIR . '/' . $pagename . '/shared';
+
 	// Build tracks JSON with full URLs for JS
 	$tracksJs = array();
 	foreach ($tracks as $t) {
+		// Read LRC from file if available, fall back to legacy inline
+		$lrc = '';
+		if (!empty($t['lrcFile'])) {
+			$lrcPath = $shared_dir . '/' . $t['lrcFile'];
+			if (file_exists($lrcPath)) {
+				$lrc = file_get_contents($lrcPath);
+			}
+		} elseif (!empty($t['lrc'])) {
+			$lrc = $t['lrc'];
+		}
+
 		$tracksJs[] = array(
 			'title' => $t['title'] ?? 'Untitled',
 			'artist' => $t['artist'] ?? 'Unknown',
 			'audioFile' => $t['audioFile'] ?? '',
 			'coverFile' => $t['coverFile'] ?? '',
-			'lrc' => $t['lrc'] ?? '',
+			'lrcFile' => $t['lrcFile'] ?? '',
+			'lrc' => $lrc,
+			'lrcOffset' => floatval($t['lrcOffset'] ?? 0),
 			'karaokeAudioFile' => $t['karaokeAudioFile'] ?? '',
 			'audioUrl' => !empty($t['audioFile']) ? $base . rawurlencode($t['audioFile']) : '',
 			'coverUrl' => !empty($t['coverFile']) ? $base . rawurlencode($t['coverFile']) : '',
@@ -249,50 +265,84 @@ function music_alter_render_early($args)
 	elem_append($topDiv, $infoDiv);
 	elem_append($elem, $topDiv);
 
-	// Controls below, full width
+	// Controls row: prev-page / prev / play / next / next-page
 	$controlsDiv = elem('div');
 	elem_add_class($controlsDiv, 'music-controls');
 
-	// Lyrics toggle (only if lyrics screen is linked)
-	if (!empty($obj['music-lyrics-obj'])) {
-		$lyricsToggle = elem('button');
-		elem_add_class($lyricsToggle, 'music-lyrics-toggle');
-		elem_add_class($lyricsToggle, 'music-lyrics-on');
-		elem_append($lyricsToggle, 'Lyrics');
-		elem_append($controlsDiv, $lyricsToggle);
+	// Previous page (skip back)
+	$prevPage = $obj['music-prev-page'] ?? '';
+	if (!empty($prevPage)) {
+		$prevPageUrl = $prevPage;
+		if (strpos($prevPageUrl, 'http') !== 0 && strpos($prevPageUrl, '/') !== 0) {
+			$prevPageUrl = base_url() . $prevPageUrl;
+		}
+		$prevPageBtn = elem('button');
+		elem_add_class($prevPageBtn, 'music-prev-page');
+		elem_attr($prevPageBtn, 'data-page', $prevPageUrl);
+		elem_append($prevPageBtn, '<svg width="22" height="22" viewBox="0 0 22 22"><rect x="1" y="4" width="3" height="14" rx="1" fill="white"/><path d="M18 4L8 11l10 7z" fill="white"/></svg>');
+		elem_append($controlsDiv, $prevPageBtn);
 	}
 
-	// Previous button
 	$prevBtn = elem('button');
 	elem_add_class($prevBtn, 'music-prev');
-	elem_append($prevBtn, '<svg width="28" height="28" viewBox="0 0 28 28" fill="white"><path d="M16 4L4 14l12 10z"/><path d="M27 4L15 14l12 10z"/></svg>');
+	elem_append($prevBtn, '<svg width="28" height="28" viewBox="0 0 28 28"><path d="M16 4L4 14l12 10z" fill="white"/><path d="M27 4L15 14l12 10z" fill="white"/></svg>');
 	elem_append($controlsDiv, $prevBtn);
 
-	// Play/Pause button
 	$playBtn = elem('button');
 	elem_add_class($playBtn, 'music-play-pause');
-	elem_append($playBtn, '<svg class="music-icon-play" width="36" height="36" viewBox="0 0 36 36" fill="white"><path d="M10 6.5a1.5 1.5 0 0 1 2.3-1.3l18 11.5a1.5 1.5 0 0 1 0 2.6l-18 11.5A1.5 1.5 0 0 1 10 29.5z"/></svg><svg class="music-icon-pause" style="display:none" width="36" height="36" viewBox="0 0 36 36" fill="white"><rect x="8" y="6" width="6" height="24" rx="1.5"/><rect x="22" y="6" width="6" height="24" rx="1.5"/></svg>');
+	elem_append($playBtn, '<svg class="music-icon-play" width="36" height="36" viewBox="0 0 36 36"><path d="M10 6.5a1.5 1.5 0 0 1 2.3-1.3l18 11.5a1.5 1.5 0 0 1 0 2.6l-18 11.5A1.5 1.5 0 0 1 10 29.5z" fill="white"/></svg><svg class="music-icon-pause" style="display:none" width="36" height="36" viewBox="0 0 36 36"><rect x="8" y="6" width="6" height="24" rx="1.5" fill="white"/><rect x="22" y="6" width="6" height="24" rx="1.5" fill="white"/></svg>');
 	elem_append($controlsDiv, $playBtn);
 
-	// Next button
 	$nextBtn = elem('button');
 	elem_add_class($nextBtn, 'music-next');
-	elem_append($nextBtn, '<svg width="28" height="28" viewBox="0 0 28 28" fill="white"><path d="M1 4l12 10L1 24z"/><path d="M12 4l12 10-12 10z"/></svg>');
+	elem_append($nextBtn, '<svg width="28" height="28" viewBox="0 0 28 28"><path d="M1 4l12 10L1 24z" fill="white"/><path d="M12 4l12 10-12 10z" fill="white"/></svg>');
 	elem_append($controlsDiv, $nextBtn);
 
-	// Instrumental toggle (only if any track has karaoke audio)
+	// Next page (skip forward)
+	$nextPage = $obj['music-next-page'] ?? '';
+	if (!empty($nextPage)) {
+		$nextPageUrl = $nextPage;
+		if (strpos($nextPageUrl, 'http') !== 0 && strpos($nextPageUrl, '/') !== 0) {
+			$nextPageUrl = base_url() . $nextPageUrl;
+		}
+		$nextPageBtn = elem('button');
+		elem_add_class($nextPageBtn, 'music-next-page');
+		elem_attr($nextPageBtn, 'data-page', $nextPageUrl);
+		elem_append($nextPageBtn, '<svg width="22" height="22" viewBox="0 0 22 22"><path d="M4 4l10 7-10 7z" fill="white"/><rect x="18" y="4" width="3" height="14" rx="1" fill="white"/></svg>');
+		elem_append($controlsDiv, $nextPageBtn);
+	}
+
+	elem_append($elem, $controlsDiv);
+
+	// Toggles row: lyrics / instrumental
+	$hasToggles = !empty($obj['music-lyrics-obj']);
 	$hasAnyKaraoke = false;
 	foreach ($tracks as $t) {
 		if (!empty($t['karaokeAudioFile'])) { $hasAnyKaraoke = true; break; }
 	}
-	if ($hasAnyKaraoke) {
-		$instrToggle = elem('button');
-		elem_add_class($instrToggle, 'music-instrumental-toggle');
-		elem_append($instrToggle, 'Instrumental');
-		elem_append($controlsDiv, $instrToggle);
-	}
+	$hasToggles = $hasToggles || $hasAnyKaraoke;
 
-	elem_append($elem, $controlsDiv);
+	if ($hasToggles) {
+		$togglesDiv = elem('div');
+		elem_add_class($togglesDiv, 'music-toggles');
+
+		if (!empty($obj['music-lyrics-obj'])) {
+			$lyricsToggle = elem('button');
+			elem_add_class($lyricsToggle, 'music-lyrics-toggle');
+			elem_add_class($lyricsToggle, 'music-lyrics-on');
+			elem_append($lyricsToggle, 'Lyrics');
+			elem_append($togglesDiv, $lyricsToggle);
+		}
+
+		if ($hasAnyKaraoke) {
+			$instrToggle = elem('button');
+			elem_add_class($instrToggle, 'music-instrumental-toggle');
+			elem_append($instrToggle, 'Instrumental');
+			elem_append($togglesDiv, $instrToggle);
+		}
+
+		elem_append($elem, $togglesDiv);
+	}
 
 	return true;
 }
@@ -383,6 +433,7 @@ function music_render_page_early($args)
 						var lyricsScreen = lyricsScreenId ? document.getElementById(lyricsScreenId) : null;
 						var lyricsInner = lyricsScreen ? lyricsScreen.querySelector(".music-lyrics-inner") : null;
 						var currentLRC = [];
+
 						var lastLyricIndex = -1;
 						var lyricsHideTimer = null;
 						var lyricsEnabled = true;
@@ -610,7 +661,7 @@ function music_render_page_early($args)
 							}
 							// Sync lyrics
 							if (lyricsInner && currentLRC.length > 0) {
-								var ct = audio.currentTime;
+								var ct = audio.currentTime + (tracks[currentTrack].lrcOffset || 0);
 								var idx = -1;
 								for (var l = currentLRC.length - 1; l >= 0; l--) {
 									if (currentLRC[l].time <= ct) { idx = l; break; }
@@ -669,6 +720,22 @@ function music_render_page_early($args)
 						prevBtn.addEventListener("click", function(e) { e.stopPropagation(); previousTrack(); });
 						playPauseBtn.addEventListener("click", function(e) { e.stopPropagation(); togglePlay(); });
 						nextBtn.addEventListener("click", function(e) { e.stopPropagation(); nextTrack(); });
+
+						// Page navigation buttons
+						var prevPageBtn = player.querySelector(".music-prev-page");
+						var nextPageBtn = player.querySelector(".music-next-page");
+						if (prevPageBtn) {
+							prevPageBtn.addEventListener("click", function(e) {
+								e.stopPropagation();
+								window.location.href = this.getAttribute("data-page");
+							});
+						}
+						if (nextPageBtn) {
+							nextPageBtn.addEventListener("click", function(e) {
+								e.stopPropagation();
+								window.location.href = this.getAttribute("data-page");
+							});
+						}
 
 						// Lyrics toggle
 						if (lyricsToggle) {
@@ -830,12 +897,20 @@ function music_get_data($args)
 	}
 	$base = base_url() . $content_relative . '/' . $pagename . '/shared/';
 
+	$shared_dir = CONTENT_DIR . '/' . $pagename . '/shared';
 	foreach ($tracks as &$track) {
 		if (!empty($track['audioFile'])) {
 			$track['audioUrl'] = $base . rawurlencode($track['audioFile']);
 		}
 		if (!empty($track['coverFile'])) {
 			$track['coverUrl'] = $base . rawurlencode($track['coverFile']);
+		}
+		// Read LRC from file if available
+		if (!empty($track['lrcFile'])) {
+			$lrcPath = $shared_dir . '/' . $track['lrcFile'];
+			if (file_exists($lrcPath)) {
+				$track['lrc'] = file_get_contents($lrcPath);
+			}
 		}
 	}
 
@@ -866,6 +941,14 @@ function music_update_tracks($args)
 	$tracks = json_decode($args['tracks'], true);
 	if (!is_array($tracks)) {
 		return response('Invalid tracks data', 400);
+	}
+
+	// Strip runtime-only fields that shouldn't be stored
+	foreach ($tracks as &$t) {
+		unset($t['lrc']);
+		unset($t['audioUrl']);
+		unset($t['coverUrl']);
+		unset($t['karaokeAudioUrl']);
 	}
 
 	$obj = load_object(array('name' => $args['name']));
@@ -1024,6 +1107,86 @@ function music_set_size($args)
 }
 
 register_service('music.set_size', 'music_set_size', array('auth'=>true));
+
+
+/**
+ *	Save LRC lyrics to a file (keeps tracks JSON small)
+ */
+function music_save_lrc($args)
+{
+	load_modules('glue');
+
+	if (empty($args['name'])) {
+		return response('Required argument "name" is missing', 400);
+	}
+	if (!isset($args['track_index'])) {
+		return response('Required argument "track_index" is missing', 400);
+	}
+	if (!isset($args['lrc'])) {
+		return response('Required argument "lrc" is missing', 400);
+	}
+
+	$obj = load_object(array('name' => $args['name']));
+	if ($obj['#error']) {
+		return response('Music player not found', 404);
+	}
+	$obj = $obj['#data'];
+
+	$tracks = json_decode($obj['music-tracks'] ?? '[]', true);
+	if (!is_array($tracks)) {
+		$tracks = array();
+	}
+
+	$idx = intval($args['track_index']);
+	if ($idx < 0 || $idx >= count($tracks)) {
+		return response('Invalid track index', 400);
+	}
+
+	// Get shared directory
+	$a = expl('.', $args['name']);
+	$pagename = $a[0];
+	$shared_dir = CONTENT_DIR . '/' . $pagename . '/shared';
+	if (!is_dir($shared_dir)) {
+		@mkdir($shared_dir, 0777, true);
+	}
+
+	$lrc = $args['lrc'];
+
+	if (empty(trim($lrc))) {
+		// Clear: delete old file if exists
+		if (!empty($tracks[$idx]['lrcFile'])) {
+			@unlink($shared_dir . '/' . $tracks[$idx]['lrcFile']);
+			unset($tracks[$idx]['lrcFile']);
+		}
+		// Also clear legacy inline lrc
+		unset($tracks[$idx]['lrc']);
+	} else {
+		// Delete old file if replacing
+		if (!empty($tracks[$idx]['lrcFile'])) {
+			@unlink($shared_dir . '/' . $tracks[$idx]['lrcFile']);
+		}
+
+		$filename = time() . '_' . rand(1000, 9999) . '.lrc';
+		$dest = $shared_dir . '/' . $filename;
+		if (file_put_contents($dest, $lrc) === false) {
+			return response('Failed to save LRC file', 500);
+		}
+
+		$tracks[$idx]['lrcFile'] = $filename;
+		// Remove legacy inline lrc
+		unset($tracks[$idx]['lrc']);
+	}
+
+	$obj['music-tracks'] = json_encode($tracks);
+	$ret = save_object($obj);
+	if ($ret['#error']) {
+		return $ret;
+	}
+
+	return response(array('lrcFile' => $tracks[$idx]['lrcFile'] ?? ''));
+}
+
+register_service('music.save_lrc', 'music_save_lrc', array('auth'=>true));
 
 
 /**

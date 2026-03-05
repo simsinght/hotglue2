@@ -623,6 +623,13 @@ $.glue.music = function() {
 					html += '<button class="music-lrc-paste" data-index="' + i + '" style="padding:4px 10px;cursor:pointer;margin-right:4px;">Paste</button>';
 					if (hasLrc) {
 						html += '<button class="music-lrc-clear" data-index="' + i + '" style="padding:4px 10px;cursor:pointer;color:red;">Clear</button>';
+						var offset = t.lrcOffset || 0;
+						html += '<div style="display:inline-flex;align-items:center;margin-left:12px;font-size:12px;color:#666;">';
+						html += '<span>Offset:</span>';
+						html += '<button class="music-lrc-offset-minus" data-index="' + i + '" style="padding:2px 6px;cursor:pointer;margin-left:4px;">−</button>';
+						html += '<span class="music-lrc-offset-val" data-index="' + i + '" style="min-width:42px;text-align:center;font-family:monospace;">' + (offset >= 0 ? '+' : '') + offset.toFixed(1) + 's</span>';
+						html += '<button class="music-lrc-offset-plus" data-index="' + i + '" style="padding:2px 6px;cursor:pointer;">+</button>';
+						html += '</div>';
 					}
 					html += '</div>';
 				}
@@ -686,17 +693,36 @@ $.glue.music = function() {
 					e.stopPropagation();
 					var idx = parseInt($(this).attr('data-index'));
 					if (confirm('Clear lyrics for "' + (tracks[idx].title || '') + '"?')) {
-						delete tracks[idx].lrc;
 						$.glue.backend({
-							method: 'music.update_tracks',
+							method: 'music.save_lrc',
 							name: objId,
-							tracks: JSON.stringify(tracks)
+							track_index: idx,
+							lrc: ''
 						}, function() {
 							$(overlay).remove();
 							self.refresh(obj);
 							self.manageLyrics(obj);
 						});
 					}
+				});
+
+				// Offset +/- buttons
+				$(dialog).find('.music-lrc-offset-minus, .music-lrc-offset-plus').click(function(e) {
+					e.stopPropagation();
+					var idx = parseInt($(this).attr('data-index'));
+					var delta = $(this).hasClass('music-lrc-offset-plus') ? 0.5 : -0.5;
+					var current = tracks[idx].lrcOffset || 0;
+					var newVal = Math.round((current + delta) * 10) / 10;
+					tracks[idx].lrcOffset = newVal;
+					// Update display
+					var label = $(dialog).find('.music-lrc-offset-val[data-index="' + idx + '"]');
+					label.text((newVal >= 0 ? '+' : '') + newVal.toFixed(1) + 's');
+					// Save
+					$.glue.backend({
+						method: 'music.update_tracks',
+						name: objId,
+						tracks: JSON.stringify(tracks)
+					});
 				});
 
 				// Show/create lyrics screen
@@ -742,11 +768,11 @@ $.glue.music = function() {
 			$(dialog).find('.music-lrc-result').click(function(e) {
 				e.stopPropagation();
 				var idx = parseInt($(this).attr('data-index'));
-				tracks[trackIndex].lrc = results[idx].syncedLyrics;
 				$.glue.backend({
-					method: 'music.update_tracks',
+					method: 'music.save_lrc',
 					name: objId,
-					tracks: JSON.stringify(tracks)
+					track_index: trackIndex,
+					lrc: results[idx].syncedLyrics
 				}, function() {
 					$(overlay).remove();
 					self.refresh(obj);
@@ -795,11 +821,11 @@ $.glue.music = function() {
 			$(dialog).find('.music-lrc-paste-save').click(function(e) {
 				e.stopPropagation();
 				var lrc = $(dialog).find('.music-lrc-textarea').val().trim();
-				tracks[trackIndex].lrc = lrc || '';
 				$.glue.backend({
-					method: 'music.update_tracks',
+					method: 'music.save_lrc',
 					name: objId,
-					tracks: JSON.stringify(tracks)
+					track_index: trackIndex,
+					lrc: lrc || ''
 				}, function() {
 					$(overlay).remove();
 					self.refresh(obj);
@@ -909,6 +935,66 @@ $.glue.music = function() {
 					$.glue.sel.select(newObj);
 				}
 			});
+		},
+
+		/**
+		 *	Configure prev/next page navigation links
+		 */
+		pageLinks: function(obj) {
+			var self = this;
+			var objId = $(obj).attr('id');
+
+			$.glue.backend({ method: 'glue.load_object', name: objId }, function(data) {
+				var prevPage = data['music-prev-page'] || '';
+				var nextPage = data['music-next-page'] || '';
+
+				var html = '<div style="background:#fff;padding:20px;border-radius:5px;min-width:350px;">';
+				html += '<h3 style="margin-top:0;">Page Navigation</h3>';
+				html += '<p style="color:#666;font-size:13px;margin-bottom:12px;">Set prev/next pages for playlist navigation. Use the page name (e.g. "housewarming") or a full URL.</p>';
+				html += '<div style="margin-bottom:12px;">';
+				html += '<label style="display:block;margin-bottom:4px;font-size:13px;color:#666;">Previous page</label>';
+				html += '<input type="text" class="music-prev-page-input" value="' + prevPage + '" placeholder="e.g. housewarming" style="width:100%;padding:6px;box-sizing:border-box;font-size:14px;">';
+				html += '</div>';
+				html += '<div style="margin-bottom:14px;">';
+				html += '<label style="display:block;margin-bottom:4px;font-size:13px;color:#666;">Next page</label>';
+				html += '<input type="text" class="music-next-page-input" value="' + nextPage + '" placeholder="e.g. housewarmed" style="width:100%;padding:6px;box-sizing:border-box;font-size:14px;">';
+				html += '</div>';
+				html += '<div style="text-align:right;">';
+				html += '<button class="music-page-cancel" style="padding:8px 16px;cursor:pointer;margin-right:8px;">Cancel</button>';
+				html += '<button class="music-page-save" style="padding:8px 16px;cursor:pointer;">Save</button>';
+				html += '</div></div>';
+
+				var overlay = $('<div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10000;"></div>');
+				var dialog = $(html);
+				$(overlay).append(dialog);
+				$('body').append(overlay);
+
+				$(dialog).bind('mousedown click', function(e) { e.stopPropagation(); });
+
+				$(dialog).find('.music-page-save').click(function(e) {
+					e.stopPropagation();
+					var prev = $(dialog).find('.music-prev-page-input').val().trim();
+					var next = $(dialog).find('.music-next-page-input').val().trim();
+
+					var update = { method: 'glue.update_object', name: objId };
+					update['music-prev-page'] = prev;
+					update['music-next-page'] = next;
+
+					$.glue.backend(update, function() {
+						$(overlay).remove();
+						self.refresh(obj);
+					});
+				});
+
+				$(dialog).find('.music-page-cancel').click(function(e) {
+					e.stopPropagation();
+					$(overlay).remove();
+				});
+
+				$(overlay).click(function(e) {
+					if (e.target === this) $(overlay).remove();
+				});
+			}, false);
 		}
 	};
 }();
@@ -953,6 +1039,14 @@ $(document).ready(function() {
 	});
 	$.glue.contextmenu.register('music-player', 'music-lyrics', elem);
 
+	// Page navigation links
+	elem = $('<img src="' + $.glue.base_url + 'modules/object/object-link.png" alt="btn" title="prev/next page links" width="32" height="32">');
+	$(elem).bind('click', function(e) {
+		var obj = $(this).data('owner');
+		$.glue.music.pageLinks(obj);
+	});
+	$.glue.contextmenu.register('music-player', 'music-page-links', elem);
+
 	// Add track button
 	elem = $('<img src="' + $.glue.base_url + 'modules/music/music-add.png" alt="btn" title="add track" width="32" height="32">');
 	$(elem).bind('click', function(e) {
@@ -995,4 +1089,22 @@ $(document).ready(function() {
 		});
 	});
 	$.glue.menu.register('new', elem);
+
+	// Lyrics toggle in edit mode — show/hide the lyrics screen object
+	$('.music-lyrics-toggle').each(function() {
+		var btn = this;
+		var player = $(btn).closest('.music-player');
+		var screenId = player.attr('data-music-lyrics-obj');
+		if (!screenId) return;
+
+		btn.addEventListener('click', function(e) {
+			e.stopPropagation();
+			e.preventDefault();
+			var screen = document.getElementById(screenId);
+			if (!screen) return;
+			var visible = screen.style.display !== 'none';
+			screen.style.display = visible ? 'none' : '';
+			btn.classList.toggle('music-lyrics-on', !visible);
+		});
+	});
 });
