@@ -438,16 +438,9 @@ function journal_render_page_early($args)
 								hideAltObjects(getAltIds(journal, curIdx));
 							}
 
-							// Compute click position using offsetLeft + CSS zoom
-							// (getBoundingClientRect is unreliable with CSS zoom on iOS Safari)
-							var cc = document.querySelector(".content-container");
-							var zoom = cc ? (parseFloat(cc.style.zoom) || 1) : 1;
-							var elLeft = journal.offsetLeft;
-							var el = journal.offsetParent;
-							while (el) { elLeft += el.offsetLeft; el = el.offsetParent; }
-							var visLeft = elLeft * zoom - (window.pageXOffset || 0);
-							var visWidth = journal.offsetWidth * zoom;
-							var clickPercent = ((e.clientX - visLeft) / visWidth) * 100;
+							// Compute click position as percentage across the journal
+							var rect = journal.getBoundingClientRect();
+							var clickPercent = ((e.clientX - rect.left) / rect.width) * 100;
 
 							var current = parseInt(journal.getAttribute("data-journal-current")) || 0;
 							var count = parseInt(journal.getAttribute("data-journal-count")) || 1;

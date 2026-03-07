@@ -320,6 +320,8 @@
 	position: relative;
 	-ms-overflow-style: none;
 	scrollbar-width: none;
+	overscroll-behavior: contain;
+	-webkit-overflow-scrolling: auto;
 }
 
 .music-lyrics-inner::-webkit-scrollbar {
@@ -347,6 +349,14 @@
 	font-size: 16px;
 }
 
+.music-lyrics-video {
+	display: block;
+	width: 100%;
+	height: 100%;
+	object-fit: contain;
+	background: #000;
+}
+
 /* Lyrics font size presets */
 .music-lrc-size-sm .music-lrc-line { font-size: 16px; }
 .music-lrc-size-sm .music-lrc-empty { font-size: 14px; }
@@ -359,3 +369,121 @@
 
 .music-lrc-size-xl .music-lrc-line { font-size: 34px; }
 .music-lrc-size-xl .music-lrc-empty { font-size: 20px; }
+
+/* ========================================
+   Live sing-along (WebRTC karaoke)
+   ======================================== */
+.music-singalong-toggle {
+	background: none;
+	border: none;
+	color: rgba(255, 255, 255, 0.35);
+	font-size: 11px;
+	cursor: pointer;
+	padding: 2px 0;
+	font-family: 'Arial', sans-serif;
+	letter-spacing: 0.5px;
+}
+
+.music-singalong-toggle.music-singing {
+	color: #ff4444;
+}
+
+.music-mic-indicator {
+	display: inline-block;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: #ff4444;
+	animation: music-mic-pulse 1.5s ease-in-out infinite;
+	margin-left: 6px;
+	vertical-align: middle;
+}
+
+@keyframes music-mic-pulse {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.3; }
+}
+
+.music-live-banner {
+	background: rgba(255, 68, 68, 0.15);
+	color: #ff8888;
+	font-size: 12px;
+	padding: 6px 10px;
+	border-radius: 6px;
+	text-align: center;
+	cursor: pointer;
+	margin-top: 6px;
+}
+
+.music-live-banner:hover {
+	background: rgba(255, 68, 68, 0.25);
+}
+
+.music-live-listening {
+	background: rgba(255, 68, 68, 0.1);
+	color: #ff8888;
+	font-size: 11px;
+	padding: 4px 10px;
+	border-radius: 6px;
+	text-align: center;
+	margin-top: 6px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+}
+
+.music-live-listening .music-stop-listening {
+	background: none;
+	border: 1px solid rgba(255, 136, 136, 0.4);
+	color: #ff8888;
+	font-size: 10px;
+	padding: 2px 8px;
+	border-radius: 4px;
+	cursor: pointer;
+}
+
+.music-live-listening .music-stop-listening:hover {
+	background: rgba(255, 68, 68, 0.2);
+}
+
+.music-mix-slider {
+	padding: 8px 16px;
+	background: rgba(0, 0, 0, 0.4);
+	backdrop-filter: blur(8px);
+	-webkit-backdrop-filter: blur(8px);
+	border-radius: 8px;
+	border: 1px solid rgba(255, 255, 255, 0.08);
+	margin-top: 8px;
+	font-size: 11px;
+	color: rgba(255, 255, 255, 0.6);
+	display: flex;
+	justify-content: center;
+}
+.music-mix-slider label {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	letter-spacing: 0.5px;
+	text-transform: uppercase;
+	font-size: 9px;
+	font-weight: 600;
+}
+.music-mix-slider input[type="range"] {
+	width: 120px;
+	height: 3px;
+	-webkit-appearance: none;
+	appearance: none;
+	background: linear-gradient(to right, rgba(100, 200, 255, 0.3), rgba(255, 100, 150, 0.3));
+	border-radius: 2px;
+	outline: none;
+}
+.music-mix-slider input[type="range"]::-webkit-slider-thumb {
+	-webkit-appearance: none;
+	width: 16px;
+	height: 16px;
+	border-radius: 50%;
+	background: #fff;
+	box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+	cursor: pointer;
+}

@@ -252,6 +252,50 @@ $.glue.music = function() {
 		},
 
 		/**
+		 *	Upload a lyric video (mp4/webm)
+		 */
+		uploadVideo: function(obj, callback) {
+			var input = $('<input type="file" accept="video/mp4,video/webm" style="display:none">');
+			$('body').append(input);
+
+			$(input).bind('change', function(e) {
+				var file = e.target.files[0];
+				if (!file) {
+					$(input).remove();
+					return;
+				}
+
+				var formData = new FormData();
+				formData.append('file', file);
+				formData.append('method', JSON.stringify('music.upload_video'));
+				formData.append('name', JSON.stringify($(obj).attr('id')));
+
+				$.ajax({
+					url: $.glue.base_url + 'json.php',
+					type: 'POST',
+					data: formData,
+					processData: false,
+					contentType: false,
+					dataType: 'json',
+					success: function(data) {
+						if (data && !data['#error'] && data['#data'] && data['#data'].filename) {
+							if (callback) callback(data['#data'].filename);
+						} else {
+							$.glue.error(data && data['#data'] ? data['#data'] : 'Failed to upload video');
+						}
+					},
+					error: function() {
+						$.glue.error('Failed to upload video');
+					}
+				});
+
+				$(input).remove();
+			});
+
+			$(input).click();
+		},
+
+		/**
 		 *	Add a new track: upload audio, then set title/artist
 		 *	Cover image can be added later via edit track
 		 */
@@ -509,6 +553,10 @@ $.glue.music = function() {
 			html += '<button class="music-upload-instrumental" style="padding:6px 12px;cursor:pointer;">Instrumental Track</button>';
 			html += '<span class="music-instrumental-status" style="margin-left:8px;font-size:12px;color:' + (track.karaokeAudioFile ? '#2a2' : '#888') + ';">' + (track.karaokeAudioFile ? 'Added' : 'None') + '</span>';
 			html += '</div>';
+			html += '<div style="margin-bottom:12px;">';
+			html += '<button class="music-upload-lyric-video" style="padding:6px 12px;cursor:pointer;">Lyric Video</button>';
+			html += '<span class="music-lyric-video-status" style="margin-left:8px;font-size:12px;color:' + (track.lyricsVideoFile ? '#2a2' : '#888') + ';">' + (track.lyricsVideoFile ? 'Added' : 'None') + '</span>';
+			html += '</div>';
 			html += '<div style="text-align:right;">';
 			html += '<button class="music-edit-cancel" style="padding:8px 16px;cursor:pointer;margin-right:8px;">Cancel</button>';
 			html += '<button class="music-edit-save" style="padding:8px 16px;cursor:pointer;">Save</button>';
@@ -546,6 +594,15 @@ $.glue.music = function() {
 				self.uploadAudio(obj, function(filename) {
 					track.karaokeAudioFile = filename;
 					$(dialog).find('.music-instrumental-status').text('Added').css('color', '#2a2');
+				});
+			});
+
+			// Upload lyric video
+			$(dialog).find('.music-upload-lyric-video').click(function(e) {
+				e.stopPropagation();
+				self.uploadVideo(obj, function(filename) {
+					track.lyricsVideoFile = filename;
+					$(dialog).find('.music-lyric-video-status').text('Added').css('color', '#2a2');
 				});
 			});
 
@@ -938,6 +995,57 @@ $.glue.music = function() {
 		},
 
 		/**
+		 *	Configure Karaoke API URL for live sing-along
+		 */
+		karaokeApiUrl: function(obj) {
+			var objId = $(obj).attr('id');
+
+			$.glue.backend({ method: 'glue.load_object', name: objId }, function(data) {
+				var currentUrl = data['music-karaoke-api'] || '';
+
+				var html = '<div style="background:#fff;padding:20px;border-radius:5px;min-width:350px;">';
+				html += '<h3 style="margin-top:0;">Karaoke API URL</h3>';
+				html += '<p style="color:#666;font-size:13px;margin-bottom:12px;">Set the signaling server URL for live sing-along (e.g. "https://api.example.com/api/karaoke").</p>';
+				html += '<div style="margin-bottom:14px;">';
+				html += '<input type="text" class="music-karaoke-api-input" value="' + currentUrl + '" placeholder="https://api.example.com/api/karaoke" style="width:100%;padding:6px;box-sizing:border-box;font-size:14px;">';
+				html += '</div>';
+				html += '<div style="text-align:right;">';
+				html += '<button class="music-karaoke-cancel" style="padding:8px 16px;cursor:pointer;margin-right:8px;">Cancel</button>';
+				html += '<button class="music-karaoke-save" style="padding:8px 16px;cursor:pointer;">Save</button>';
+				html += '</div></div>';
+
+				var overlay = $('<div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10000;"></div>');
+				var dialog = $(html);
+				$(overlay).append(dialog);
+				$('body').append(overlay);
+
+				$(dialog).bind('mousedown click', function(e) { e.stopPropagation(); });
+
+				$(dialog).find('.music-karaoke-save').click(function(e) {
+					e.stopPropagation();
+					var url = $(dialog).find('.music-karaoke-api-input').val().trim();
+
+					var update = { method: 'glue.update_object', name: objId };
+					update['music-karaoke-api'] = url;
+
+					$.glue.backend(update, function() {
+						$(overlay).remove();
+						$.glue.music.refresh(obj);
+					});
+				});
+
+				$(dialog).find('.music-karaoke-cancel').click(function(e) {
+					e.stopPropagation();
+					$(overlay).remove();
+				});
+
+				$(overlay).click(function(e) {
+					if (e.target === this) $(overlay).remove();
+				});
+			}, false);
+		},
+
+		/**
 		 *	Configure prev/next page navigation links
 		 */
 		pageLinks: function(obj) {
@@ -1046,6 +1154,14 @@ $(document).ready(function() {
 		$.glue.music.pageLinks(obj);
 	});
 	$.glue.contextmenu.register('music-player', 'music-page-links', elem);
+
+	// Karaoke API URL
+	elem = $('<img src="' + $.glue.base_url + 'modules/object/object-link.png" alt="btn" title="karaoke API URL" width="32" height="32">');
+	$(elem).bind('click', function(e) {
+		var obj = $(this).data('owner');
+		$.glue.music.karaokeApiUrl(obj);
+	});
+	$.glue.contextmenu.register('music-player', 'music-karaoke-api', elem);
 
 	// Add track button
 	elem = $('<img src="' + $.glue.base_url + 'modules/music/music-add.png" alt="btn" title="add track" width="32" height="32">');

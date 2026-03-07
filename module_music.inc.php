@@ -60,7 +60,7 @@ function music_alter_render_early($args)
 	// Handle lyrics screen object
 	if (elem_has_class($elem, 'music-lyrics-screen')) {
 		if (elem_css($elem, 'background') === NULL && elem_css($elem, 'background-color') === NULL) {
-			elem_css($elem, 'background', 'rgba(0, 0, 0, 0.85)');
+			elem_css($elem, 'background', 'rgba(0, 0, 0, 1)');
 		}
 		if (elem_css($elem, 'border-radius') === NULL) {
 			elem_css($elem, 'border-radius', '15px');
@@ -130,14 +130,21 @@ function music_alter_render_early($args)
 			'hasLrc' => $hasLrc,
 			'lrcOffset' => floatval($t['lrcOffset'] ?? 0),
 			'karaokeAudioFile' => $t['karaokeAudioFile'] ?? '',
+			'lyricsVideoFile' => $t['lyricsVideoFile'] ?? '',
 			'audioUrl' => !empty($t['audioFile']) ? $base . rawurlencode($t['audioFile']) : '',
 			'coverUrl' => !empty($t['coverFile']) ? $base . rawurlencode($t['coverFile']) : '',
-			'karaokeAudioUrl' => !empty($t['karaokeAudioFile']) ? $base . rawurlencode($t['karaokeAudioFile']) : ''
+			'karaokeAudioUrl' => !empty($t['karaokeAudioFile']) ? $base . rawurlencode($t['karaokeAudioFile']) : '',
+			'lyricsVideoUrl' => !empty($t['lyricsVideoFile']) ? $base . rawurlencode($t['lyricsVideoFile']) : ''
 		);
 	}
 
 	elem_attr($elem, 'data-music-tracks', json_encode($tracksJs));
 	elem_attr($elem, 'data-music-current', $current);
+
+	// Karaoke API URL for live sing-along
+	if (!empty($obj['music-karaoke-api'])) {
+		elem_attr($elem, 'data-karaoke-api', $obj['music-karaoke-api']);
+	}
 
 	// Link to lyrics screen if exists
 	if (!empty($obj['music-lyrics-obj'])) {
@@ -322,7 +329,8 @@ function music_alter_render_early($args)
 	foreach ($tracks as $t) {
 		if (!empty($t['karaokeAudioFile'])) { $hasAnyKaraoke = true; break; }
 	}
-	$hasToggles = $hasToggles || $hasAnyKaraoke;
+	$hasKaraokeApi = !empty($obj['music-karaoke-api']);
+	$hasToggles = $hasToggles || $hasAnyKaraoke || ($hasAnyKaraoke && $hasKaraokeApi);
 
 	if ($hasToggles) {
 		$togglesDiv = elem('div');
@@ -331,7 +339,6 @@ function music_alter_render_early($args)
 		if (!empty($obj['music-lyrics-obj'])) {
 			$lyricsToggle = elem('button');
 			elem_add_class($lyricsToggle, 'music-lyrics-toggle');
-			elem_add_class($lyricsToggle, 'music-lyrics-on');
 			elem_append($lyricsToggle, 'Lyrics');
 			elem_append($togglesDiv, $lyricsToggle);
 		}
@@ -341,6 +348,14 @@ function music_alter_render_early($args)
 			elem_add_class($instrToggle, 'music-instrumental-toggle');
 			elem_append($instrToggle, 'Instrumental');
 			elem_append($togglesDiv, $instrToggle);
+		}
+
+		if ($hasAnyKaraoke && $hasKaraokeApi) {
+			$singToggle = elem('div');
+			elem_add_class($singToggle, 'music-singalong-toggle');
+			elem_attr($singToggle, 'title', 'Karaoke?');
+			elem_append($singToggle, 'Karaoke?');
+			elem_append($togglesDiv, $singToggle);
 		}
 
 		elem_append($elem, $togglesDiv);
@@ -437,13 +452,12 @@ function music_render_page_early($args)
 						var currentLRC = [];
 
 						var lastLyricIndex = -1;
-						var lyricsHideTimer = null;
-						var lyricsEnabled = true;
+						var lyricsEnabled = false;
 						var lyricsToggle = player.querySelector(".music-lyrics-toggle");
 
 						var instrumentalEnabled = false;
 						var instrumentalToggle = player.querySelector(".music-instrumental-toggle");
-						// Hide lyrics screen until playback starts
+						// Lyrics screen starts hidden; user toggles via lyrics button
 						if (lyricsScreen) lyricsScreen.style.display = "none";
 
 						function formatTime(s) {
@@ -476,10 +490,12 @@ function music_render_page_early($args)
 						function renderLyrics() {
 							var track = tracks[currentTrack];
 							var hasLrc = !!(track.hasLrc);
+							var hasVideo = !!(track.lyricsVideoUrl);
+							var hasLyrics = hasLrc || hasVideo;
 							var hasKaraoke = !!(track.karaokeAudioUrl);
 							// Show/hide toggle buttons based on current track
 							if (lyricsToggle) {
-								lyricsToggle.style.display = hasLrc ? "" : "none";
+								lyricsToggle.style.display = hasLyrics ? "" : "none";
 							}
 							if (instrumentalToggle) {
 								instrumentalToggle.style.display = hasKaraoke ? "" : "none";
@@ -489,6 +505,37 @@ function music_render_page_early($args)
 								}
 							}
 							if (!lyricsInner) return;
+
+							// Clean up any previous lyric video
+							var oldVideo = lyricsInner.querySelector(".music-lyrics-video");
+							if (oldVideo) {
+								oldVideo.pause();
+								oldVideo.removeAttribute("src");
+								oldVideo.parentNode.removeChild(oldVideo);
+							}
+
+							// Lyric video takes priority over LRC text
+							if (hasVideo) {
+								currentLRC = [];
+								lastLyricIndex = -1;
+								lyricsInner.innerHTML = "";
+								var vid = document.createElement("video");
+								vid.className = "music-lyrics-video";
+								vid.src = track.lyricsVideoUrl;
+								vid.muted = true;
+								vid.playsInline = true;
+								vid.setAttribute("playsinline", "");
+								vid.style.width = "100%";
+								vid.style.height = "100%";
+								vid.style.objectFit = "contain";
+								lyricsInner.style.padding = "0";
+								lyricsInner.appendChild(vid);
+								// Sync video to audio position
+								syncLyricsVideo();
+								return;
+							}
+
+							lyricsInner.style.padding = "";
 							// If LRC already cached, render immediately
 							if (track._lrcText !== undefined) {
 								applyLRC(track._lrcText);
@@ -526,6 +573,18 @@ function music_render_page_early($args)
 								h += "<div class=\"music-lrc-line\">" + currentLRC[i].text + "</div>";
 							}
 							lyricsInner.innerHTML = h;
+						}
+
+						function syncLyricsVideo() {
+							if (!lyricsInner) return;
+							var vid = lyricsInner.querySelector(".music-lyrics-video");
+							if (!vid) return;
+							// Match video position to audio
+							vid.currentTime = audio.currentTime;
+							if (!audio.paused) {
+								var p = vid.play();
+								if (p) p.catch(function() {});
+							}
 						}
 
 						function updatePlayer() {
@@ -636,17 +695,14 @@ function music_render_page_early($args)
 							}
 						});
 
-						// Sync play/pause icon + Media Session playback state + lyrics visibility
+						// Sync play/pause icon + Media Session playback state + lyric video
 						audio.addEventListener("play", function() {
 							playIcon.style.display = "none";
 							pauseIcon.style.display = "";
 							if ("mediaSession" in navigator) {
 								navigator.mediaSession.playbackState = "playing";
 							}
-							if (lyricsScreen && lyricsEnabled && currentLRC.length > 0) {
-								if (lyricsHideTimer) { clearTimeout(lyricsHideTimer); lyricsHideTimer = null; }
-								lyricsScreen.style.display = "";
-							}
+							syncLyricsVideo();
 						});
 
 						audio.addEventListener("pause", function() {
@@ -655,11 +711,12 @@ function music_render_page_early($args)
 							if ("mediaSession" in navigator) {
 								navigator.mediaSession.playbackState = "paused";
 							}
-							if (lyricsScreen) {
-								lyricsHideTimer = setTimeout(function() {
-									lyricsScreen.style.display = "none";
-								}, 500);
-							}
+							var vid = lyricsInner ? lyricsInner.querySelector(".music-lyrics-video") : null;
+							if (vid) vid.pause();
+						});
+
+						audio.addEventListener("seeked", function() {
+							syncLyricsVideo();
 						});
 
 						// Media Session position state for iOS progress bar
@@ -772,12 +829,8 @@ function music_render_page_early($args)
 								lyricsEnabled = !lyricsEnabled;
 								this.classList.toggle("music-lyrics-on", lyricsEnabled);
 								if (lyricsScreen) {
-									if (lyricsEnabled && !audio.paused && currentLRC.length > 0) {
-										if (lyricsHideTimer) { clearTimeout(lyricsHideTimer); lyricsHideTimer = null; }
-										lyricsScreen.style.display = "";
-									} else if (!lyricsEnabled) {
-										lyricsScreen.style.display = "none";
-									}
+									lyricsScreen.style.display = lyricsEnabled ? "" : "none";
+									if (lyricsEnabled) syncLyricsVideo();
 								}
 							});
 						}
@@ -828,6 +881,539 @@ function music_render_page_early($args)
 
 						// Initial lyrics render
 						renderLyrics();
+
+						// ============================================
+						// Live Sing-Along (WebRTC)
+						// ============================================
+						var apiBase = player.getAttribute("data-karaoke-api");
+						if (apiBase) {
+						(function() {
+							var playerId = player.getAttribute("id") || "player";
+							var page = window.location.pathname.replace(/^\//, "").replace(/\/$/, "") || "index";
+							var singBtn = player.querySelector(".music-singalong-toggle");
+							var rtcConfig = { iceServers: [
+								{ urls: "stun:stun.l.google.com:19302" },
+								{ urls: "stun:stun1.l.google.com:19302" }
+							]};
+
+							// Cached username
+							function getUsername() {
+								var name = null;
+								try { name = localStorage.getItem("karaoke-username"); } catch(e) {}
+								if (!name) {
+									name = prompt("Your name?");
+									if (name) { try { localStorage.setItem("karaoke-username", name); } catch(e) {} }
+								}
+								return name;
+							}
+
+							// --- Singer state ---
+							var singerRoom = null;
+
+							// --- Listener state ---
+							var listenerState = null;
+							var liveBanner = null;
+							var listeningDiv = null;
+
+							function apiCall(method, path, body) {
+								var opts = { method: method, headers: { "Content-Type": "application/json" } };
+								if (body) opts.body = JSON.stringify(body);
+								return fetch(apiBase + path, opts).then(function(r) { return r.json(); });
+							}
+
+							// ----- KARAOKE BUTTON -----
+							if (singBtn) {
+								singBtn.addEventListener("click", function(e) {
+									e.stopPropagation();
+									if (singerRoom) {
+										stopSinging();
+										return;
+									}
+									if (listenerState) {
+										stopListening();
+										return;
+									}
+									// Check for active rooms, always show a banner
+									singBtn.textContent = "checking...";
+									apiCall("GET", "/rooms?page=" + encodeURIComponent(page)).then(function(rooms) {
+										var room = null;
+										for (var r = 0; r < rooms.length; r++) {
+											if (rooms[r].player_id === playerId) { room = rooms[r]; break; }
+										}
+										singBtn.textContent = "Karaoke?";
+										if (room) {
+											showLiveBanner(room);
+										} else {
+											showStartBanner();
+										}
+									}).catch(function() {
+										singBtn.textContent = "Karaoke?";
+									});
+								});
+							}
+
+							// ----- SINGER -----
+							function startSinging() {
+								var name = getUsername();
+								if (!name) { if (singBtn) singBtn.textContent = "Karaoke?"; return; }
+								removeLiveBanner();
+								if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+									alert("Mic access requires HTTPS");
+									if (singBtn) singBtn.textContent = "Karaoke?";
+									return;
+								}
+								navigator.mediaDevices.getUserMedia({
+									audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+									video: false
+								}).then(function(stream) {
+									// Mix mic + backing track into one stream for WebRTC
+									var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+									if (audioCtx.state === "suspended") audioCtx.resume();
+									// Compressor auto-balances voice vs backing track
+									var compressor = audioCtx.createDynamicsCompressor();
+									compressor.threshold.value = -30;
+									compressor.knee.value = 12;
+									compressor.ratio.value = 8;
+									compressor.attack.value = 0.003;
+									compressor.release.value = 0.15;
+									var mixedDest = audioCtx.createMediaStreamDestination();
+									compressor.connect(mixedDest);
+									
+									// Mic: boost and add to mix
+									var micSource = audioCtx.createMediaStreamSource(stream);
+									var micGain = audioCtx.createGain();
+									micGain.gain.value = 6.0;
+									micSource.connect(micGain);
+									micGain.connect(compressor);
+									
+									// Backing track: capture and add to mix (reduced volume)
+									var trackMixGain = null;
+									try {
+										var trackSource = audioCtx.createMediaElementSource(audio);
+										// Full volume to singer speakers
+										trackSource.connect(audioCtx.destination);
+										// Reduced volume into the mix so voice cuts through
+										trackMixGain = audioCtx.createGain();
+										trackMixGain.gain.value = 0.2;
+										trackSource.connect(trackMixGain);
+										trackMixGain.connect(compressor);
+									} catch(e) {
+										console.warn("Could not capture backing track:", e);
+									}
+									var mixedStream = mixedDest.stream;
+
+									// Start playback if paused
+									if (audio.paused) {
+										var p = audio.play();
+										if (p) p.catch(function() {});
+									}
+									apiCall("POST", "/room", {
+										page: page, player_id: playerId, singer_name: name,
+										track_index: currentTrack, track_title: tracks[currentTrack].title,
+										current_time: audio.currentTime
+									}).then(function(res) {
+										singerRoom = {
+											roomId: res.room_id, micStream: stream, mixedStream: mixedStream, trackMixGain: trackMixGain,
+											audioCtx: audioCtx, peers: {}, pollTs: 0
+										};
+										if (singBtn) {
+											singBtn.classList.add("music-singing");
+											singBtn.innerHTML = "Stop Singing <span class=\"music-mic-indicator\"></span>";
+										// Mix slider for singer to adjust track vs voice balance
+										var mixSlider = document.createElement("div");
+										mixSlider.className = "music-mix-slider";
+										mixSlider.innerHTML = "<label>Track <input type=\\"range\\" min=\\"0\\" max=\\"100\\" value=\\"60\\" step=\\"1\\"> Voice</label>";
+										var rangeInput = mixSlider.querySelector("input");
+										rangeInput.addEventListener("input", function() {
+											var val = (100 - parseInt(this.value)) / 100 * 0.5;
+											if (singerRoom && singerRoom.trackMixGain) singerRoom.trackMixGain.gain.value = val;
+										});
+										player.appendChild(mixSlider);
+										singerRoom._mixSlider = mixSlider;
+										}
+										// Heartbeat every 5s for fresher timestamps
+										singerRoom.heartbeatInterval = setInterval(function() {
+											if (!singerRoom) return;
+											apiCall("POST", "/room/" + singerRoom.roomId + "/heartbeat", {
+												track_index: currentTrack,
+												track_title: tracks[currentTrack].title,
+												current_time: audio.currentTime
+											});
+										}, 5000);
+										// Poll signals (3s — singer stays alive for new listeners)
+										singerRoom.pollInterval = setInterval(function() {
+											singerPollSignals();
+										}, 3000);
+									});
+								}).catch(function(err) {
+									alert("Mic access denied: " + err.message);
+									if (singBtn) singBtn.textContent = "Karaoke?";
+								});
+							}
+
+							function singerPollSignals() {
+								if (!singerRoom) return;
+								apiCall("GET", "/room/" + singerRoom.roomId + "/signal?peer_id=singer&since=" + singerRoom.pollTs).then(function(signals) {
+									for (var s = 0; s < signals.length; s++) {
+										var sig = signals[s];
+										if (sig.ts > singerRoom.pollTs) singerRoom.pollTs = sig.ts;
+										if (sig.type === "offer-request") {
+											singerCreateOffer(sig.from);
+										} else if (sig.type === "answer" && singerRoom.peers[sig.from]) {
+											var pc = singerRoom.peers[sig.from];
+											pc.setRemoteDescription(new RTCSessionDescription(sig.data)).then(function() {
+												// Drain queued ICE candidates
+												var q = pc._iceQueue || [];
+												pc._iceQueue = [];
+												for (var i = 0; i < q.length; i++) {
+													pc.addIceCandidate(new RTCIceCandidate(q[i]));
+												}
+											});
+										} else if (sig.type === "ice" && singerRoom.peers[sig.from]) {
+											var pc = singerRoom.peers[sig.from];
+											if (pc.remoteDescription) {
+												pc.addIceCandidate(new RTCIceCandidate(sig.data));
+											} else {
+												if (!pc._iceQueue) pc._iceQueue = [];
+												pc._iceQueue.push(sig.data);
+											}
+										}
+									}
+								});
+							}
+
+							function singerCreateOffer(listenerId) {
+								if (!singerRoom) return;
+								var pc = new RTCPeerConnection(rtcConfig);
+								singerRoom.peers[listenerId] = pc;
+								var iceQueue = [];
+								singerRoom.mixedStream.getTracks().forEach(function(t) { pc.addTrack(t, singerRoom.mixedStream); });
+
+								// DataChannel for time sync
+								var dc = pc.createDataChannel("sync");
+								pc._dc = dc;
+								dc.onopen = function() {
+									pc._syncInterval = setInterval(function() {
+										if (dc.readyState === "open") {
+											dc.send(JSON.stringify({ t: audio.currentTime, ti: currentTrack, p: !audio.paused, d: audio.duration || 0 }));
+										}
+									}, 2000);
+								};
+								dc.onclose = function() {
+									if (pc._syncInterval) clearInterval(pc._syncInterval);
+								};
+
+								pc.onicecandidate = function(e) {
+									if (e.candidate) {
+										iceQueue.push(e.candidate.toJSON());
+									} else {
+										for (var i = 0; i < iceQueue.length; i++) {
+											apiCall("POST", "/room/" + singerRoom.roomId + "/signal", {
+												from: "singer", to: listenerId, type: "ice", data: iceQueue[i]
+											});
+										}
+									}
+								};
+								pc.onconnectionstatechange = function() {
+									if (pc.connectionState === "disconnected" || pc.connectionState === "failed") {
+										if (pc._syncInterval) clearInterval(pc._syncInterval);
+										pc.close();
+										delete singerRoom.peers[listenerId];
+									}
+								};
+								pc.createOffer().then(function(offer) {
+									return pc.setLocalDescription(offer);
+								}).then(function() {
+									apiCall("POST", "/room/" + singerRoom.roomId + "/signal", {
+										from: "singer", to: listenerId, type: "offer", data: pc.localDescription.toJSON()
+									});
+								});
+							}
+
+							function singerBroadcastSync() {
+								if (!singerRoom) return;
+								var msg = JSON.stringify({ t: audio.currentTime, ti: currentTrack, p: !audio.paused, d: audio.duration || 0 });
+								Object.keys(singerRoom.peers).forEach(function(k) {
+									var dc = singerRoom.peers[k]._dc;
+									if (dc && dc.readyState === "open") dc.send(msg);
+								});
+							}
+
+							// Broadcast immediately on play/pause when singing
+							audio.addEventListener("play", function() { singerBroadcastSync(); });
+							audio.addEventListener("pause", function() { singerBroadcastSync(); });
+
+							function stopSinging() {
+								if (!singerRoom) return;
+								clearInterval(singerRoom.heartbeatInterval);
+								clearInterval(singerRoom.pollInterval);
+								Object.keys(singerRoom.peers).forEach(function(k) {
+									if (singerRoom.peers[k]._syncInterval) clearInterval(singerRoom.peers[k]._syncInterval);
+									singerRoom.peers[k].close();
+								});
+								if (singerRoom._mixSlider && singerRoom._mixSlider.parentNode) singerRoom._mixSlider.parentNode.removeChild(singerRoom._mixSlider);
+								singerRoom.micStream.getTracks().forEach(function(t) { t.stop(); });
+								if (singerRoom.audioCtx) singerRoom.audioCtx.close();
+								apiCall("DELETE", "/room/" + singerRoom.roomId);
+								// Reload audio so it plays through default output again
+								var wasPlaying = !audio.paused;
+								var pos = audio.currentTime;
+								audio.load();
+								audio.addEventListener("canplay", function() {
+									audio.currentTime = pos;
+									if (wasPlaying) audio.play().catch(function() {});
+								}, { once: true });
+								singerRoom = null;
+								if (singBtn) {
+									singBtn.classList.remove("music-singing");
+									singBtn.textContent = "Karaoke?";
+								}
+							}
+
+							// ----- LISTENER -----
+							function showLiveBanner(room) {
+								removeLiveBanner();
+								liveBanner = document.createElement("div");
+								liveBanner.className = "music-live-banner";
+								liveBanner.innerHTML = "<span class=\"music-mic-indicator\"></span> " + room.singer_name + " is singing! Tap to listen";
+								liveBanner.addEventListener("click", function(e) {
+									e.stopPropagation();
+									startListening(room);
+								});
+								player.appendChild(liveBanner);
+							}
+
+							function showStartBanner() {
+								removeLiveBanner();
+								liveBanner = document.createElement("div");
+								liveBanner.className = "music-live-banner";
+								liveBanner.textContent = "No one has the mic. Start singing?";
+								liveBanner.addEventListener("click", function(e) {
+									e.stopPropagation();
+									startSinging();
+								});
+								player.appendChild(liveBanner);
+							}
+
+							function removeLiveBanner() {
+								if (liveBanner && liveBanner.parentNode) liveBanner.parentNode.removeChild(liveBanner);
+								liveBanner = null;
+							}
+
+							function startListening(room) {
+								removeLiveBanner();
+								var peerId = "listener-" + Math.random().toString(36).substr(2, 8);
+								listenerState = { roomId: room.room_id, peerId: peerId, pc: null, remoteAudio: null, pollTs: 0, iceQueue: [], prevVolume: audio.volume };
+
+								// Mute local audio - listener hears mixed stream via WebRTC
+								audio.pause();
+								audio.volume = 0;
+
+								// Sync track display to singer (UI only, no playback)
+								if (room.track_index !== undefined && room.track_index !== currentTrack) {
+									currentTrack = room.track_index;
+									var track = tracks[currentTrack];
+									titleEl.textContent = track.title;
+									artistEl.textContent = track.artist;
+									if (coverImg) coverImg.src = track.coverUrl || "";
+									renderLyrics();
+								}
+
+								// Send offer request
+								apiCall("POST", "/room/" + room.room_id + "/signal", {
+									from: peerId, to: "singer", type: "offer-request", data: {}
+								});
+
+								// Poll for signals (only during handshake, stopped on connect)
+								listenerState.pollInterval = setInterval(function() {
+									listenerPollSignals();
+								}, 1500);
+
+								showListeningUI(room.singer_name);
+
+								// UI update loop: interpolate singer time for progress bar + lyrics
+								(function listenerUILoop() {
+									if (!listenerState) return;
+									var st = listenerState._syncTime;
+									if (st !== undefined) {
+										var elapsed = listenerState._playing ? (Date.now() - listenerState._syncTs) / 1000 : 0;
+										var ct = st + elapsed;
+										var dur = listenerState._syncDuration || 0;
+										if (dur > 0) {
+											var pct = (ct / dur) * 100;
+											progressFill.style.width = Math.min(pct, 100) + "%";
+											timeElapsed.textContent = formatTime(ct);
+											timeRemaining.textContent = "-" + formatTime(Math.max(0, dur - ct));
+										}
+										// Sync lyrics
+										if (lyricsInner && currentLRC.length > 0) {
+											var lt = ct + (tracks[currentTrack].lrcOffset || 0);
+											var idx = -1;
+											for (var l = currentLRC.length - 1; l >= 0; l--) {
+												if (currentLRC[l].time <= lt) { idx = l; break; }
+											}
+											if (idx !== lastLyricIndex) {
+												lastLyricIndex = idx;
+												var lineEls = lyricsInner.querySelectorAll(".music-lrc-line");
+												for (var l = 0; l < lineEls.length; l++) {
+													if (l === idx) {
+														lineEls[l].classList.add("music-lrc-active");
+														var targetTop = lineEls[l].offsetTop - (lyricsInner.clientHeight / 2) + (lineEls[l].offsetHeight / 2);
+														lyricsInner.scrollTop = Math.max(0, targetTop);
+													} else {
+														lineEls[l].classList.remove("music-lrc-active");
+													}
+												}
+											}
+										}
+									}
+									requestAnimationFrame(listenerUILoop);
+								})();
+							}
+
+							function listenerPollSignals() {
+								if (!listenerState) return;
+								apiCall("GET", "/room/" + listenerState.roomId + "/signal?peer_id=" + listenerState.peerId + "&since=" + listenerState.pollTs).then(function(signals) {
+									for (var s = 0; s < signals.length; s++) {
+										var sig = signals[s];
+										if (sig.ts > listenerState.pollTs) listenerState.pollTs = sig.ts;
+										if (sig.type === "offer") {
+											listenerHandleOffer(sig.data);
+										} else if (sig.type === "ice") {
+											if (listenerState.pc && listenerState.pc.remoteDescription) {
+												listenerState.pc.addIceCandidate(new RTCIceCandidate(sig.data));
+											} else {
+												listenerState.iceQueue.push(sig.data);
+											}
+										}
+									}
+								}).catch(function() {
+									stopListening(true);
+								});
+							}
+
+							function listenerHandleOffer(offerData) {
+								if (!listenerState) return;
+								var pc = new RTCPeerConnection(rtcConfig);
+								listenerState.pc = pc;
+								var localIceQueue = [];
+								pc.onicecandidate = function(e) {
+									if (e.candidate) {
+										localIceQueue.push(e.candidate.toJSON());
+									} else {
+										for (var i = 0; i < localIceQueue.length; i++) {
+											apiCall("POST", "/room/" + listenerState.roomId + "/signal", {
+												from: listenerState.peerId, to: "singer", type: "ice", data: localIceQueue[i]
+											});
+										}
+									}
+								};
+								pc.ontrack = function(e) {
+									var remoteAudio = new Audio();
+									remoteAudio.srcObject = e.streams[0];
+									remoteAudio.play().catch(function() {});
+									listenerState.remoteAudio = remoteAudio;
+								};
+								pc.ondatachannel = function(e) {
+									var dc = e.channel;
+									dc.onmessage = function(evt) {
+										try {
+											var msg = JSON.parse(evt.data);
+											// Sync track display if singer switched
+											if (msg.ti !== undefined && msg.ti !== currentTrack) {
+												currentTrack = msg.ti;
+												var track = tracks[currentTrack];
+												titleEl.textContent = track.title;
+												artistEl.textContent = track.artist;
+												if (coverImg) coverImg.src = track.coverUrl || "";
+												renderLyrics();
+											}
+											// Store sync time for progress bar and lyrics
+											if (msg.t !== undefined && listenerState) {
+												listenerState._syncTime = msg.t;
+												listenerState._syncTs = Date.now();
+												listenerState._playing = msg.p;
+												if (msg.d) listenerState._syncDuration = msg.d;
+											}
+										} catch(err) {}
+									};
+								};
+								pc.onconnectionstatechange = function() {
+									if (pc.connectionState === "connected") {
+										// Handshake done — stop polling signals
+										if (listenerState && listenerState.pollInterval) {
+											clearInterval(listenerState.pollInterval);
+											listenerState.pollInterval = null;
+										}
+									} else if (pc.connectionState === "disconnected" || pc.connectionState === "failed") {
+										stopListening(true);
+									}
+								};
+								pc.setRemoteDescription(new RTCSessionDescription(offerData)).then(function() {
+									// Drain any ICE candidates that arrived before remote description was set
+									var queued = listenerState.iceQueue;
+									listenerState.iceQueue = [];
+									for (var i = 0; i < queued.length; i++) {
+										pc.addIceCandidate(new RTCIceCandidate(queued[i]));
+									}
+									return pc.createAnswer();
+								}).then(function(answer) {
+									return pc.setLocalDescription(answer);
+								}).then(function() {
+									apiCall("POST", "/room/" + listenerState.roomId + "/signal", {
+										from: listenerState.peerId, to: "singer", type: "answer", data: pc.localDescription.toJSON()
+									});
+								});
+							}
+
+							function showListeningUI(singerName) {
+								removeListeningUI();
+								listeningDiv = document.createElement("div");
+								listeningDiv.className = "music-live-listening";
+								listeningDiv.innerHTML = "<span class=\"music-mic-indicator\"></span> Listening to " + singerName +
+									" <button class=\"music-stop-listening\">Stop</button>";
+								listeningDiv.querySelector(".music-stop-listening").addEventListener("click", function(e) {
+									e.stopPropagation();
+									stopListening();
+								});
+								player.appendChild(listeningDiv);
+								if (singBtn) {
+									singBtn.classList.add("music-singing");
+									singBtn.textContent = "Listening...";
+								}
+							}
+
+							function removeListeningUI() {
+								if (listeningDiv && listeningDiv.parentNode) listeningDiv.parentNode.removeChild(listeningDiv);
+								listeningDiv = null;
+							}
+
+							function stopListening(pauseTrack) {
+								if (!listenerState) return;
+								// Restore backing track volume
+								audio.volume = listenerState.prevVolume || 1.0;
+								clearInterval(listenerState.pollInterval);
+								if (listenerState.pc) listenerState.pc.close();
+								if (listenerState.remoteAudio) {
+									listenerState.remoteAudio.pause();
+									listenerState.remoteAudio.srcObject = null;
+								}
+								listenerState = null;
+								removeListeningUI();
+								if (singBtn) {
+									singBtn.classList.remove("music-singing");
+									singBtn.textContent = "Karaoke?";
+								}
+								if (pauseTrack) audio.pause();
+							}
+
+							// Cleanup on page unload
+							window.addEventListener("beforeunload", function() {
+								if (singerRoom) stopSinging();
+								if (listenerState) stopListening();
+							});
+						})();
+						}
 
 					})(players[i]);
 				}
@@ -977,6 +1563,7 @@ function music_update_tracks($args)
 		unset($t['audioUrl']);
 		unset($t['coverUrl']);
 		unset($t['karaokeAudioUrl']);
+		unset($t['lyricsVideoUrl']);
 	}
 
 	$obj = load_object(array('name' => $args['name']));
@@ -1085,6 +1672,52 @@ function music_upload_cover($args)
 }
 
 register_service('music.upload_cover', 'music_upload_cover', array('auth'=>true));
+
+
+/**
+ *	Upload lyric video (mp4/webm)
+ */
+function music_upload_video($args)
+{
+	load_modules('glue');
+
+	if (empty($args['name'])) {
+		return response('Required argument "name" is missing', 400);
+	}
+
+	if (empty($_FILES['file'])) {
+		return response('No file uploaded', 400);
+	}
+
+	$file = $_FILES['file'];
+	if ($file['error'] !== UPLOAD_ERR_OK) {
+		return response('File upload error', 400);
+	}
+
+	$a = expl('.', $args['name']);
+	$pagename = $a[0];
+
+	$shared_dir = CONTENT_DIR . '/' . $pagename . '/shared';
+	if (!is_dir($shared_dir)) {
+		@mkdir($shared_dir, 0777, true);
+	}
+
+	$ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+	if (!in_array($ext, array('mp4', 'webm'))) {
+		$ext = 'mp4';
+	}
+
+	$filename = time() . '_' . rand(1000, 9999) . '.' . $ext;
+	$dest = $shared_dir . '/' . $filename;
+
+	if (!move_uploaded_file($file['tmp_name'], $dest)) {
+		return response('Failed to save uploaded file', 500);
+	}
+
+	return response(array('filename' => $filename));
+}
+
+register_service('music.upload_video', 'music_upload_video', array('auth'=>true));
 
 
 /**
