@@ -115,15 +115,27 @@ if ($files) {
 			$shared_files[] = trim($m[1]);
 		}
 
-		// music-tracks (JSON with audioFile, coverFile, karaokeAudioFile)
+		// music-tracks (JSON with audioFile, coverFile, karaokeAudioFile, lrcFile)
 		if (preg_match('/^music-tracks:(.+)$/m', $content, $m)) {
 			$tracks = json_decode(trim($m[1]), true);
 			if (is_array($tracks)) {
 				foreach ($tracks as $t) {
-					foreach (array('audioFile', 'coverFile', 'karaokeAudioFile') as $field) {
+					foreach (array('audioFile', 'coverFile', 'karaokeAudioFile', 'lrcFile') as $field) {
 						if (!empty($t[$field])) {
 							$shared_files[] = $t[$field];
 						}
+					}
+				}
+			}
+		}
+
+		// photostack-images (JSON with file)
+		if (preg_match('/^photostack-images:(.+)$/m', $content, $m)) {
+			$ps_images = json_decode(trim($m[1]), true);
+			if (is_array($ps_images)) {
+				foreach ($ps_images as $pi) {
+					if (!empty($pi['file'])) {
+						$shared_files[] = $pi['file'];
 					}
 				}
 			}
@@ -156,9 +168,18 @@ if (CONTENT_DIR[0] === '/') {
 
 // 4a. Content-dir shared URLs (music/journal pattern):
 //     SENTINEL + "local-content/PAGE/shared/RAWENCODED_FILE" → assets/FILE
+//     Also handle JSON-escaped versions (json_encode escapes / to \/)
+//     which appear inside data-music-tracks attributes after htmlspecialchars
+$json_sentinel = str_replace('/', '\\/', $SENTINEL);
+$json_shared_base = str_replace('/', '\\/', $content_relative . '/' . $pagename_short . '/shared/');
 foreach ($shared_files as $sf) {
-	$pattern = $SENTINEL . $content_relative . '/' . $pagename_short . '/shared/' . rawurlencode($sf);
-	$html = str_replace($pattern, 'assets/' . rawurlencode($sf), $html);
+	$encoded_file = rawurlencode($sf);
+	// Plain URL
+	$pattern = $SENTINEL . $content_relative . '/' . $pagename_short . '/shared/' . $encoded_file;
+	$html = str_replace($pattern, 'assets/' . $encoded_file, $html);
+	// JSON-escaped URL (inside data attributes that went through json_encode + htmlspecialchars)
+	$json_pattern = $json_sentinel . $json_shared_base . str_replace('/', '\\/', $encoded_file);
+	$html = str_replace($json_pattern, 'assets\\/' . str_replace('/', '\\/', $encoded_file), $html);
 }
 
 // 4b. Object-name URLs (image/video/page-bg pattern):
@@ -215,6 +236,8 @@ $html = preg_replace('/<script[^>]*src="' . preg_quote($SENTINEL, '/') . '[^"]*"
 
 // 4f. Strip any remaining sentinel references as catch-all
 // (e.g., in inline JS vars like $.glue.base_url)
+// Also strip JSON-escaped version
+$html = str_replace($json_sentinel, '', $html);
 $remaining_before = substr_count($html, '__HOTGLUE_PUBLISH__');
 $html = str_replace($SENTINEL, '', $html);
 $remaining_after = substr_count($html, '__HOTGLUE_PUBLISH__');
@@ -253,28 +276,40 @@ if ($favicon_referenced && is_file(__DIR__ . '/img/favicon.ico')) {
 	$copied++;
 }
 
-// Copy shared files (following symlinks)
+// Copy only referenced shared files (following symlinks)
+$skipped = 0;
+foreach ($shared_files as $sf) {
+	$src = $shared_dir . '/' . $sf;
+	// Resolve symlinks
+	if (is_link($src)) {
+		$target = readlink($src);
+		if (substr($target, 0, 1) !== '/') {
+			$target = dirname($src) . '/' . $target;
+		}
+		$src = $target;
+	}
+	if (is_file($src)) {
+		$dest_subdir = dirname($assets_dir . '/' . $sf);
+		if (!is_dir($dest_subdir)) {
+			mkdir($dest_subdir, 0755, true);
+		}
+		copy($src, $assets_dir . '/' . $sf);
+		$copied++;
+	} else {
+		fprintf(STDERR, "Warning: shared file not found: %s\n", $sf);
+	}
+}
+// Count how many shared files were skipped
 if (is_dir($shared_dir)) {
-	$iter = new RecursiveIteratorIterator(
-		new RecursiveDirectoryIterator($shared_dir, RecursiveDirectoryIterator::FOLLOW_SYMLINKS | RecursiveDirectoryIterator::SKIP_DOTS),
-		RecursiveIteratorIterator::SELF_FIRST
+	$all_shared = new RecursiveIteratorIterator(
+		new RecursiveDirectoryIterator($shared_dir, RecursiveDirectoryIterator::FOLLOW_SYMLINKS | RecursiveDirectoryIterator::SKIP_DOTS)
 	);
-	foreach ($iter as $item) {
-		// Get relative path from shared dir
-		$rel = substr($item->getPathname(), strlen($shared_dir) + 1);
-		$dest = $assets_dir . '/' . $rel;
-
-		if ($item->isDir()) {
-			if (!is_dir($dest)) {
-				mkdir($dest, 0755, true);
+	foreach ($all_shared as $item) {
+		if ($item->isFile()) {
+			$rel = substr($item->getPathname(), strlen($shared_dir) + 1);
+			if (!in_array($rel, $shared_files)) {
+				$skipped++;
 			}
-		} elseif ($item->isFile()) {
-			$dest_subdir = dirname($dest);
-			if (!is_dir($dest_subdir)) {
-				mkdir($dest_subdir, 0755, true);
-			}
-			copy($item->getPathname(), $dest);
-			$copied++;
 		}
 	}
 }
@@ -288,6 +323,9 @@ echo "\nDone!\n";
 echo sprintf("  index.html: %s\n", format_bytes($html_size));
 echo sprintf("  assets/: %d files copied\n", $copied);
 
+if ($skipped > 0) {
+	echo sprintf("  Skipped %d unused shared file(s)\n", $skipped);
+}
 if ($remaining_before > 0) {
 	echo sprintf("  Sentinel URLs rewritten: %d catch-all replacements\n", $remaining_before);
 }
