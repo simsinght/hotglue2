@@ -92,6 +92,7 @@ function journal_alter_render_early($args)
 		elem_css($pageElem, 'transform-style', 'preserve-3d');
 
 		$isCover = !empty($page['cover']);
+		$isNearby = abs($index - $current) <= 1;
 
 		// Create left half (unfolds when arriving - "back of turned page")
 		$leftHalf = elem('div');
@@ -107,7 +108,11 @@ function journal_alter_render_early($args)
 			// Cover pages have an empty left half
 		} else {
 			$leftImg = elem('img');
-			elem_attr($leftImg, 'src', $imgUrl);
+			// Lazy load: only set src for current page and neighbors
+			if ($isNearby) {
+				elem_attr($leftImg, 'src', $imgUrl);
+			}
+			elem_attr($leftImg, 'data-src', $imgUrl);
 			elem_attr($leftImg, 'draggable', 'false');
 			elem_css($leftImg, 'position', 'absolute');
 			elem_css($leftImg, 'top', '0');
@@ -129,7 +134,10 @@ function journal_alter_render_early($args)
 		elem_css($rightHalf, 'overflow', 'hidden');
 
 		$rightImg = elem('img');
-		elem_attr($rightImg, 'src', $imgUrl);
+		if ($isNearby) {
+			elem_attr($rightImg, 'src', $imgUrl);
+		}
+		elem_attr($rightImg, 'data-src', $imgUrl);
 		elem_attr($rightImg, 'draggable', 'false');
 		elem_css($rightImg, 'position', 'absolute');
 		elem_css($rightImg, 'top', '0');
@@ -343,6 +351,34 @@ function journal_render_page_early($args)
 					}
 				}
 
+				function loadPageImages(journal, pageIndex) {
+					var page = journal.querySelector(".journal-page[data-index=\"" + pageIndex + "\"]");
+					if (!page) return;
+					var imgs = page.querySelectorAll("img[data-src]");
+					for (var i = 0; i < imgs.length; i++) {
+						if (!imgs[i].getAttribute("src")) imgs[i].setAttribute("src", imgs[i].getAttribute("data-src"));
+					}
+				}
+
+				function unloadPageImages(journal, pageIndex) {
+					var page = journal.querySelector(".journal-page[data-index=\"" + pageIndex + "\"]");
+					if (!page) return;
+					var imgs = page.querySelectorAll("img[data-src]");
+					for (var i = 0; i < imgs.length; i++) {
+						imgs[i].removeAttribute("src");
+					}
+				}
+
+				function updatePageImages(journal, newIndex) {
+					var count = parseInt(journal.getAttribute("data-journal-count")) || 1;
+					loadPageImages(journal, newIndex);
+					loadPageImages(journal, newIndex - 1);
+					loadPageImages(journal, newIndex + 1);
+					for (var p = 0; p < count; p++) {
+						if (Math.abs(p - newIndex) > 1) unloadPageImages(journal, p);
+					}
+				}
+
 				function removeDismissBtn(journal) {
 					var existing = journal._altDismissBtn;
 					if (existing && existing.parentNode) {
@@ -456,6 +492,8 @@ function journal_render_page_early($args)
 								isAnimating = true;
 
 								var nextPage = journal.querySelector(".journal-page[data-index=\"" + next + "\"]");
+								loadPageImages(journal, next);
+								loadPageImages(journal, next + 1);
 
 								var cr = currentPage.querySelector(".journal-page-right");
 								var nl = nextPage ? nextPage.querySelector(".journal-page-left") : null;
@@ -463,8 +501,8 @@ function journal_render_page_early($args)
 								// Pin starting transforms with transition disabled
 								if (nl) { nl.style.transition = "none"; nl.style.transform = "rotateY(180deg)"; }
 								if (cr) { cr.style.transition = "none"; cr.style.transform = "rotateY(0deg)"; }
-								if (nextPage) { nextPage.style.visibility = "visible"; nextPage.style.zIndex = 1; }
-								currentPage.style.zIndex = 2;
+								if (nextPage) { nextPage.style.visibility = "visible"; nextPage.style.zIndex = 2; }
+								currentPage.style.zIndex = 1;
 
 								// Force paint at starting position
 								if (cr) cr.offsetHeight;
@@ -489,6 +527,7 @@ function journal_render_page_early($args)
 										}
 									}
 									updateAltBtn(journal, altShowing);
+									updatePageImages(journal, next);
 								}, 600);
 
 							} else if (clickPercent <= foldLine && current > 0) {
@@ -497,6 +536,8 @@ function journal_render_page_early($args)
 								isAnimating = true;
 
 								var prevPage = journal.querySelector(".journal-page[data-index=\"" + next + "\"]");
+								loadPageImages(journal, next);
+								loadPageImages(journal, next - 1);
 
 								var cl = currentPage.querySelector(".journal-page-left");
 								var pr = prevPage ? prevPage.querySelector(".journal-page-right") : null;
@@ -529,6 +570,7 @@ function journal_render_page_early($args)
 										}
 									}
 									updateAltBtn(journal, altShowing);
+									updatePageImages(journal, next);
 								}, 600);
 							}
 						});
