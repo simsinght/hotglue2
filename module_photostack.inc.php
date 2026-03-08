@@ -123,6 +123,18 @@ function photostack_alter_render_early($args)
 		elem_append($elem, $layer);
 	}
 
+	// Build layer objects map (layer index => array of object names)
+	$layerObjMap = array();
+	foreach ($images as $index => $img) {
+		$layerObjs = $img['layerObjects'] ?? array();
+		if (!empty($layerObjs)) {
+			$layerObjMap[$index] = $layerObjs;
+		}
+	}
+	if (!empty($layerObjMap)) {
+		elem_attr($elem, 'data-layer-objects', json_encode($layerObjMap));
+	}
+
 	return true;
 }
 
@@ -254,15 +266,44 @@ function photostack_render_page_early($args)
 		// View mode - inline JS for cycling through images (no jQuery dependency)
 		html_add_js_inline('
 			document.addEventListener("DOMContentLoaded", function() {
+				function getLayerObjMap(stack) {
+					try { return JSON.parse(stack.getAttribute("data-layer-objects") || "{}"); }
+					catch(e) { return {}; }
+				}
+				function getLayerObjIds(stack, layerIndex) {
+					var map = getLayerObjMap(stack);
+					return map[layerIndex] || [];
+				}
+				function showLayerObjects(ids) {
+					for (var k = 0; k < ids.length; k++) {
+						var el = document.getElementById(ids[k]);
+						if (el) el.style.display = "";
+					}
+				}
+				function hideLayerObjects(ids) {
+					for (var k = 0; k < ids.length; k++) {
+						var el = document.getElementById(ids[k]);
+						if (el) el.style.display = "none";
+					}
+				}
+				function hideAllLayerObjects(stack) {
+					var map = getLayerObjMap(stack);
+					for (var p in map) {
+						hideLayerObjects(map[p]);
+					}
+				}
 				var stacks = document.querySelectorAll(".photostack");
 				for (var i = 0; i < stacks.length; i++) {
 					(function(stack) {
+						hideAllLayerObjects(stack);
+						showLayerObjects(getLayerObjIds(stack, 0));
 						stack.style.cursor = "pointer";
 						stack.addEventListener("click", function(e) {
 							var current = parseInt(stack.getAttribute("data-photostack-current")) || 0;
 							var count = parseInt(stack.getAttribute("data-photostack-count")) || 1;
 							if (count <= 1) return;
 							var next = (current + 1) % count;
+							hideLayerObjects(getLayerObjIds(stack, current));
 							stack.setAttribute("data-photostack-current", next);
 							var layers = stack.querySelectorAll(".photostack-layer");
 							for (var j = 0; j < layers.length; j++) {
@@ -296,6 +337,7 @@ function photostack_render_page_early($args)
 									}
 								}
 							}
+							showLayerObjects(getLayerObjIds(stack, next));
 						});
 					})(stacks[i]);
 				}

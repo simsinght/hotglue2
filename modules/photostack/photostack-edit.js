@@ -236,6 +236,142 @@ $.glue.photostack = function() {
 		},
 
 		/**
+		 *	Get layer objects map from data attribute
+		 */
+		_getLayerObjMap: function(obj) {
+			try { return JSON.parse($(obj).attr('data-layer-objects') || '{}'); }
+			catch(e) { return {}; }
+		},
+
+		/**
+		 *	Get object IDs for a specific layer
+		 */
+		_getLayerObjIds: function(obj, layerIndex) {
+			var map = this._getLayerObjMap(obj);
+			return map[layerIndex] || [];
+		},
+
+		/**
+		 *	Sync data-layer-objects attribute from images data
+		 */
+		_syncLayerObjAttr: function(obj, images) {
+			var map = {};
+			for (var i = 0; i < images.length; i++) {
+				var lo = images[i].layerObjects || [];
+				if (lo.length > 0) {
+					map[i] = lo;
+				}
+			}
+			var json = JSON.stringify(map);
+			$(obj).attr('data-layer-objects', json === '{}' ? '' : json);
+		},
+
+		/**
+		 *	Show layer objects for a specific layer, hiding all others
+		 */
+		_showLayerObjectsForLayer: function(obj, layerIndex) {
+			var map = this._getLayerObjMap(obj);
+			// Deselect and hide all layer objects
+			for (var p in map) {
+				var ids = map[p];
+				for (var i = 0; i < ids.length; i++) {
+					var el = document.getElementById(ids[i]);
+					if (el) {
+						if ($(el).hasClass('glue-selected')) {
+							$.glue.sel.deselect($(el));
+						}
+						$(el).hide();
+					}
+				}
+			}
+			// Show target layer's objects
+			var targetIds = map[layerIndex] || [];
+			for (var i = 0; i < targetIds.length; i++) {
+				var el = document.getElementById(targetIds[i]);
+				if (el) $(el).show();
+			}
+		},
+
+		/**
+		 *	Add a sticker to the current layer
+		 */
+		addSticker: function(obj) {
+			var self = this;
+			var current = parseInt($(obj).attr('data-photostack-current')) || 0;
+			var stackPos = $(obj).offset();
+			var stackW = $(obj).outerWidth();
+			var stackH = $(obj).outerHeight();
+			var objZ = parseInt($(obj).css('z-index')) || 0;
+
+			// Center of stack in viewport coordinates
+			var centerX = stackPos.left + stackW / 2 - $(window).scrollLeft();
+			var centerY = stackPos.top + stackH / 2 - $(window).scrollTop();
+
+			// Watch for new objects added to body
+			var observer = new MutationObserver(function(mutations) {
+				for (var m = 0; m < mutations.length; m++) {
+					var added = mutations[m].addedNodes;
+					for (var n = 0; n < added.length; n++) {
+						var node = added[n];
+						if (node.nodeType === 1 && $(node).hasClass('object')) {
+							observer.disconnect();
+							clearTimeout(safetyTimeout);
+							// Reposition centered on stack
+							var elW = $(node).outerWidth() || 100;
+							var elH = $(node).outerHeight() || 80;
+							$(node).css({
+								'left': (stackPos.left + (stackW - elW) / 2) + 'px',
+								'top': (stackPos.top + (stackH - elH) / 2) + 'px',
+								'z-index': objZ + 1
+							});
+							$.glue.object.save($(node));
+							self._addStickerToLayer(obj, current, $(node).attr('id'));
+							return;
+						}
+					}
+				}
+			});
+
+			observer.observe(document.body, { childList: true });
+
+			// Safety timeout: disconnect observer if user cancels
+			var safetyTimeout = setTimeout(function() {
+				observer.disconnect();
+			}, 60000);
+
+			// Show the standard "new" menu centered on stack
+			$.glue.menu.show('new', centerX, centerY);
+		},
+
+		/**
+		 *	Add a sticker object ID to a specific layer's layerObjects
+		 */
+		_addStickerToLayer: function(obj, layerIndex, objId) {
+			var self = this;
+			$.glue.backend({
+				method: 'photostack.get_data',
+				name: $(obj).attr('id')
+			}, function(data) {
+				if (!data) return;
+				var images = data['images'] || [];
+				if (layerIndex < 0 || layerIndex >= images.length) return;
+
+				if (!images[layerIndex].layerObjects) {
+					images[layerIndex].layerObjects = [];
+				}
+				images[layerIndex].layerObjects.push(objId);
+
+				$.glue.backend({
+					method: 'photostack.update_images',
+					name: $(obj).attr('id'),
+					images: JSON.stringify(images)
+				}, function() {
+					self._syncLayerObjAttr(obj, images);
+				});
+			});
+		},
+
+		/**
 		 *	Advance to the next image in the stack
 		 */
 		advance: function(obj) {
@@ -280,6 +416,7 @@ $.glue.photostack = function() {
 				}
 			});
 
+			this._showLayerObjectsForLayer(obj, next);
 		},
 
 		/**
@@ -310,6 +447,7 @@ $.glue.photostack = function() {
 				}
 			});
 
+			this._showLayerObjectsForLayer(obj, 0);
 		},
 
 		/**
@@ -445,6 +583,16 @@ $.glue.photostack = function() {
 					e.stopPropagation();
 					var index = parseInt($(this).attr('data-index'));
 					if (confirm('Remove image #' + index + '?')) {
+						// Delete sticker objects bound to this layer
+						var stickerIds = (images[index] && images[index].layerObjects) || [];
+						for (var si = 0; si < stickerIds.length; si++) {
+							var stickerEl = document.getElementById(stickerIds[si]);
+							if (stickerEl) {
+								$.glue.object.unregister($(stickerEl));
+								$(stickerEl).remove();
+								$.glue.backend({ method: 'glue.delete_object', name: stickerIds[si] });
+							}
+						}
 						$.glue.backend({
 							method: 'photostack.remove_image',
 							name: $(obj).attr('id'),
@@ -673,6 +821,15 @@ $('.photostack').live('click', function(e) {
 		return;
 	}
 
+	// Hide current layer stickers before advancing
+	var cur = parseInt($(this).attr('data-photostack-current')) || 0;
+	var curIds = $.glue.photostack._getLayerObjIds(this, cur);
+	for (var si = 0; si < curIds.length; si++) {
+		var sel = document.getElementById(curIds[si]);
+		if (sel && $(sel).hasClass('glue-selected')) {
+			$.glue.sel.deselect($(sel));
+		}
+	}
 	$.glue.photostack.advance(this);
 });
 
@@ -735,6 +892,14 @@ $(document).ready(function() {
 		$.glue.photostack.reset(obj);
 	});
 	$.glue.contextmenu.register('photostack', 'photostack-reset', elem);
+
+	// Add sticker button
+	elem = $('<img src="'+$.glue.base_url+'modules/photostack/photostack-sticker.png" alt="btn" title="add sticker to current layer" width="32" height="32">');
+	$(elem).bind('click', function(e) {
+		var obj = $(this).data('owner');
+		$.glue.photostack.addSticker(obj);
+	});
+	$.glue.contextmenu.register('photostack', 'photostack-sticker', elem);
 
 	// Rotate focused layer button (drag up/down to rotate)
 	elem = $('<div class="photostack-rotate-btn" style="width:24px;height:24px;line-height:24px;text-align:center;background:#ccc;border-radius:4px;font-size:14px;cursor:not-allowed;opacity:0.5;" title="rotate focused layer (drag up/down) - select a layer first">↻</div>');
@@ -846,4 +1011,59 @@ $(document).ready(function() {
 		});
 	});
 	$.glue.menu.register('new', elem);
+
+	// Show layer 0 stickers for each photostack on load
+	$('.photostack').each(function() {
+		$.glue.photostack._showLayerObjectsForLayer(this, 0);
+	});
+
+	// Cleanup: remove deleted objects from layerObjects
+	$('.object').live('glue-unregister', function() {
+		var deletedId = $(this).attr('id');
+		if (!deletedId) return;
+		$('.photostack').each(function() {
+			var stack = this;
+			var layerObjMap = $.glue.photostack._getLayerObjMap(stack);
+			var found = false;
+
+			for (var p in layerObjMap) {
+				var arr = layerObjMap[p];
+				var idx = $.inArray(deletedId, arr);
+				if (idx !== -1) {
+					found = true;
+					break;
+				}
+			}
+
+			if (!found) return;
+
+			// Fetch images, remove the deleted ID, save
+			$.glue.backend({
+				method: 'photostack.get_data',
+				name: $(stack).attr('id')
+			}, function(data) {
+				if (!data) return;
+				var images = data['images'] || [];
+				var changed = false;
+				for (var i = 0; i < images.length; i++) {
+					var lo = images[i].layerObjects || [];
+					var loIdx = $.inArray(deletedId, lo);
+					if (loIdx !== -1) {
+						lo.splice(loIdx, 1);
+						images[i].layerObjects = lo;
+						changed = true;
+					}
+				}
+				if (changed) {
+					$.glue.backend({
+						method: 'photostack.update_images',
+						name: $(stack).attr('id'),
+						images: JSON.stringify(images)
+					}, function() {
+						$.glue.photostack._syncLayerObjAttr(stack, images);
+					});
+				}
+			});
+		});
+	});
 });
