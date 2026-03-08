@@ -330,7 +330,7 @@
 
 .music-lrc-line {
 	color: rgba(255, 255, 255, 0.3);
-	font-size: 20px;
+	font-size: inherit;
 	line-height: 2;
 	transition: color 0.3s ease, text-shadow 0.3s ease;
 	padding: 2px 0;
@@ -357,18 +357,8 @@
 	background: #000;
 }
 
-/* Lyrics font size presets */
-.music-lrc-size-sm .music-lrc-line { font-size: 16px; }
-.music-lrc-size-sm .music-lrc-empty { font-size: 14px; }
-
-.music-lrc-size-md .music-lrc-line { font-size: 20px; }
-.music-lrc-size-md .music-lrc-empty { font-size: 16px; }
-
-.music-lrc-size-lg .music-lrc-line { font-size: 26px; }
-.music-lrc-size-lg .music-lrc-empty { font-size: 18px; }
-
-.music-lrc-size-xl .music-lrc-line { font-size: 34px; }
-.music-lrc-size-xl .music-lrc-empty { font-size: 20px; }
+/* Lyrics empty message always slightly smaller than lines */
+.music-lrc-empty { font-size: 0.8em; }
 
 /* ========================================
    Live sing-along (WebRTC karaoke)

@@ -67,18 +67,16 @@ function music_alter_render_early($args)
 		}
 		elem_attr($elem, 'data-music-parent', $obj['music-parent'] ?? '');
 
-		// Font size preset
-		$lrcSize = $obj['music-lyrics-size'] ?? 'md';
-		if (!in_array($lrcSize, array('sm', 'md', 'lg', 'xl'))) {
-			$lrcSize = 'md';
-		}
-		elem_add_class($elem, 'music-lrc-size-' . $lrcSize);
-		elem_attr($elem, 'data-music-lrc-size', $lrcSize);
+		// Font size (pixels)
+		$fontSize = intval($obj['music-lyrics-fontsize'] ?? 20);
+		if ($fontSize < 8) $fontSize = 20;
+		elem_attr($elem, 'data-music-lrc-fontsize', $fontSize);
 
 		$inner = elem('div');
 		elem_add_class($inner, 'music-lyrics-inner');
+		elem_css($inner, 'font-size', $fontSize . 'px');
 		if ($args['edit']) {
-			elem_append($inner, '<div class="music-lrc-empty">Lyrics screen (' . $lrcSize . ')</div>');
+			elem_append($inner, '<div class="music-lrc-empty">Lyrics screen (' . $fontSize . 'px)</div>');
 		}
 		elem_append($elem, $inner);
 		return true;
@@ -1998,6 +1996,45 @@ function music_set_lyrics_size($args)
 }
 
 register_service('music.set_lyrics_size', 'music_set_lyrics_size', array('auth'=>true));
+
+
+/**
+ *	Set lyrics font size in pixels
+ */
+function music_set_lyrics_fontsize($args)
+{
+	load_modules('glue');
+
+	if (empty($args['name'])) {
+		return response('Required argument "name" is missing', 400);
+	}
+
+	$fontsize = intval($args['fontsize'] ?? 20);
+	if ($fontsize < 8) $fontsize = 8;
+	if ($fontsize > 80) $fontsize = 80;
+
+	$obj = load_object(array('name' => $args['name']));
+	if ($obj['#error']) {
+		return response('Lyrics screen not found', 404);
+	}
+	$obj = $obj['#data'];
+
+	$obj['music-lyrics-fontsize'] = $fontsize;
+
+	$ret = save_object($obj);
+	if ($ret['#error']) {
+		return $ret;
+	}
+
+	$ret = render_object(array('name' => $obj['name'], 'edit' => true));
+	if ($ret['#error']) {
+		return $ret;
+	}
+
+	return response($ret['#data']);
+}
+
+register_service('music.set_lyrics_fontsize', 'music_set_lyrics_fontsize', array('auth'=>true));
 
 
 /**

@@ -949,18 +949,17 @@ $.glue.music = function() {
 		},
 
 		/**
-		 *	Cycle lyrics screen font size: sm → md → lg → xl → sm
+		 *	Adjust lyrics font size by delta pixels
 		 */
-		cycleLyricsSize: function(obj) {
-			var self = this;
-			var current = $(obj).attr('data-music-lrc-size') || 'md';
-			var order = ['sm', 'md', 'lg', 'xl'];
-			var next = order[(order.indexOf(current) + 1) % order.length];
+		adjustLyricsFontSize: function(obj, delta) {
+			var current = parseInt($(obj).attr('data-music-lrc-fontsize')) || 20;
+			var next = Math.max(8, Math.min(80, current + delta));
+			if (next === current) return;
 
 			$.glue.backend({
-				method: 'music.set_lyrics_size',
+				method: 'music.set_lyrics_fontsize',
 				name: $(obj).attr('id'),
-				size: next
+				fontsize: next
 			}, function(html) {
 				if (html) {
 					var newObj = $(html);
@@ -1172,14 +1171,21 @@ $(document).ready(function() {
 	$.glue.contextmenu.register('music-player', 'music-add', elem);
 
 	//
-	// Lyrics screen context menu — font size
+	// Lyrics screen context menu — font size +/-
 	//
-	elem = $('<img src="' + $.glue.base_url + 'modules/music/music-size.png" alt="btn" title="cycle text size (sm/md/lg/xl)" width="32" height="32">');
+	elem = $('<img src="' + $.glue.base_url + 'modules/music/music-size.png" alt="btn" title="increase text size" width="32" height="32">');
 	$(elem).bind('click', function(e) {
 		var obj = $(this).data('owner');
-		$.glue.music.cycleLyricsSize(obj);
+		$.glue.music.adjustLyricsFontSize(obj, 2);
 	});
-	$.glue.contextmenu.register('music-lyrics-screen', 'music-lrc-size', elem);
+	$.glue.contextmenu.register('music-lyrics-screen', 'music-lrc-size-up', elem);
+
+	elem = $('<img src="' + $.glue.base_url + 'modules/music/music-size.png" alt="btn" title="decrease text size" width="32" height="32" style="opacity:0.5;">');
+	$(elem).bind('click', function(e) {
+		var obj = $(this).data('owner');
+		$.glue.music.adjustLyricsFontSize(obj, -2);
+	});
+	$.glue.contextmenu.register('music-lyrics-screen', 'music-lrc-size-down', elem);
 
 	//
 	// Create menu item
