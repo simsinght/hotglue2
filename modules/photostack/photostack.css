@@ -42,3 +42,19 @@
 .glue-editing .photostack:hover {
 	cursor: pointer;
 }
+
+/* Click area hotspot divs */
+.photostack-click-area {
+	position: absolute;
+	box-sizing: border-box;
+	cursor: pointer;
+}
+
+.glue-editing .photostack-click-area {
+	background: rgba(0,100,255,0.15);
+	border: 2px dashed #0066ff;
+	z-index: 200;
+}
+
+.photostack-click-area.photostack-click-area-active {
+}
