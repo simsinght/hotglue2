@@ -322,16 +322,52 @@ function photostack_render_page_early($args)
 						hideLayerObjects(map[p]);
 					}
 				}
+				function getClickAreas(stack, layerIndex) {
+					try {
+						var map = JSON.parse(stack.getAttribute("data-layer-clickareas") || "{}");
+						return map[layerIndex] || [];
+					} catch(e) { return []; }
+				}
+				function hideAllClickAreas(stack) {
+					var divs = stack.querySelectorAll(".photostack-click-area");
+					for (var k = 0; k < divs.length; k++) {
+						divs[k].style.display = "none";
+					}
+				}
+				function showClickAreas(stack, layerIndex) {
+					var divs = stack.querySelectorAll(".photostack-click-area[data-layer=\"" + layerIndex + "\"]");
+					for (var k = 0; k < divs.length; k++) {
+						divs[k].style.display = "block";
+					}
+				}
 				var stacks = document.querySelectorAll(".photostack");
 				for (var i = 0; i < stacks.length; i++) {
 					(function(stack) {
 						hideAllLayerObjects(stack);
 						showLayerObjects(getLayerObjIds(stack, 0));
+						hideAllClickAreas(stack);
+						showClickAreas(stack, 0);
 						stack.style.cursor = "pointer";
 						stack.addEventListener("click", function(e) {
 							var current = parseInt(stack.getAttribute("data-photostack-current")) || 0;
 							var count = parseInt(stack.getAttribute("data-photostack-count")) || 1;
 							if (count <= 1) return;
+							var areas = getClickAreas(stack, current);
+							if (areas.length > 0) {
+								var rect = stack.getBoundingClientRect();
+								var xPct = (e.clientX - rect.left) / rect.width * 100;
+								var yPct = (e.clientY - rect.top) / rect.height * 100;
+								var inArea = false;
+								for (var a = 0; a < areas.length; a++) {
+									var area = areas[a];
+									if (xPct >= area.x && xPct <= area.x + area.w &&
+									    yPct >= area.y && yPct <= area.y + area.h) {
+										inArea = true;
+										break;
+									}
+								}
+								if (!inArea) return;
+							}
 							var next = (current + 1) % count;
 							hideLayerObjects(getLayerObjIds(stack, current));
 							stack.setAttribute("data-photostack-current", next);
@@ -368,6 +404,8 @@ function photostack_render_page_early($args)
 								}
 							}
 							showLayerObjects(getLayerObjIds(stack, next));
+							hideAllClickAreas(stack);
+							showClickAreas(stack, next);
 						});
 					})(stacks[i]);
 				}
