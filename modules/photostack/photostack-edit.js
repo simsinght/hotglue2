@@ -153,6 +153,9 @@ $.glue.photostack = function() {
 						}
 					}
 				});
+
+				// Render click area boxes for this layer
+				self._renderClickAreaBoxes(obj, index);
 			});
 		},
 
@@ -206,6 +209,8 @@ $.glue.photostack = function() {
 				layer.css('pointer-events', 'none');
 			}
 
+			this._clearClickAreaBoxes(obj);
+
 			focusedLayer = null;
 			focusedStack = null;
 			focusedIndex = null;
@@ -220,6 +225,205 @@ $.glue.photostack = function() {
 		 */
 		hasFocusedLayer: function() {
 			return focusedLayer !== null;
+		},
+
+		/**
+		 *	Add a new click area to the current layer
+		 */
+		addClickArea: function(obj) {
+			var self = this;
+			var layerIndex = (focusedIndex !== null) ? focusedIndex : (parseInt($(obj).attr('data-photostack-current')) || 0);
+
+			var doAdd = function() {
+				if (!imagesData || !imagesData[layerIndex]) return;
+				if (!imagesData[layerIndex].clickAreas) {
+					imagesData[layerIndex].clickAreas = [];
+				}
+				imagesData[layerIndex].clickAreas.push({x: 25, y: 25, w: 50, h: 50});
+				self._saveClickAreas(obj, layerIndex);
+				self._renderClickAreaBoxes(obj, layerIndex);
+			};
+
+			if (imagesData) {
+				doAdd();
+			} else {
+				$.glue.backend({
+					method: 'photostack.get_data',
+					name: $(obj).attr('id')
+				}, function(data) {
+					if (!data) return;
+					imagesData = data['images'] || [];
+					doAdd();
+				});
+			}
+		},
+
+		/**
+		 *	Render draggable/resizable click area boxes for a layer in edit mode
+		 */
+		_renderClickAreaBoxes: function(obj, layerIndex) {
+			var self = this;
+			self._clearClickAreaBoxes(obj);
+
+			if (!imagesData || !imagesData[layerIndex]) return;
+			var areas = imagesData[layerIndex].clickAreas || [];
+
+			for (var i = 0; i < areas.length; i++) {
+				(function(areaIndex) {
+					var area = imagesData[layerIndex].clickAreas[areaIndex];
+
+					var div = $('<div>')
+						.addClass('photostack-click-area')
+						.attr('data-edit-area', 'true')
+						.attr('data-layer', layerIndex)
+						.attr('data-area-index', areaIndex)
+						.css({
+							left: area.x + '%',
+							top: area.y + '%',
+							width: area.w + '%',
+							height: area.h + '%',
+							display: 'block'
+						});
+
+					// Delete button
+					var delBtn = $('<span>').html('&times;').css({
+						position: 'absolute',
+						top: '0',
+						right: '0',
+						background: '#f00',
+						color: '#fff',
+						width: '16px',
+						height: '16px',
+						lineHeight: '16px',
+						textAlign: 'center',
+						cursor: 'pointer',
+						fontSize: '12px',
+						zIndex: '201',
+						boxSizing: 'border-box'
+					});
+					delBtn.bind('mousedown', function(e) { e.stopPropagation(); });
+					delBtn.bind('click', function(e) {
+						e.stopPropagation();
+						if (imagesData && imagesData[layerIndex] && imagesData[layerIndex].clickAreas) {
+							imagesData[layerIndex].clickAreas.splice(areaIndex, 1);
+							self._saveClickAreas(obj, layerIndex);
+							self._renderClickAreaBoxes(obj, layerIndex);
+						}
+					});
+					div.append(delBtn);
+
+					// Resize handle
+					var resizeHandle = $('<div>').css({
+						position: 'absolute',
+						bottom: '0',
+						right: '0',
+						width: '10px',
+						height: '10px',
+						background: '#0066ff',
+						cursor: 'se-resize',
+						zIndex: '201'
+					});
+
+					// Drag (move) handler
+					div.bind('mousedown', function(e) {
+						if ($(e.target).is(resizeHandle) || $(e.target).is(delBtn)) return;
+						e.stopPropagation();
+						e.preventDefault();
+
+						var startX = e.pageX;
+						var startY = e.pageY;
+						var startLeft = area.x;
+						var startTop = area.y;
+						var sw = $(obj).width();
+						var sh = $(obj).height();
+
+						var onMove = function(e) {
+							var dx = ((e.pageX - startX) / sw) * 100;
+							var dy = ((e.pageY - startY) / sh) * 100;
+							var newX = Math.max(0, Math.min(100 - area.w, startLeft + dx));
+							var newY = Math.max(0, Math.min(100 - area.h, startTop + dy));
+							div.css({left: newX + '%', top: newY + '%'});
+							if (imagesData && imagesData[layerIndex] && imagesData[layerIndex].clickAreas && imagesData[layerIndex].clickAreas[areaIndex]) {
+								imagesData[layerIndex].clickAreas[areaIndex].x = Math.round(newX * 10) / 10;
+								imagesData[layerIndex].clickAreas[areaIndex].y = Math.round(newY * 10) / 10;
+							}
+						};
+						var onUp = function() {
+							$(document).unbind('mousemove', onMove);
+							$(document).unbind('mouseup', onUp);
+							self._saveClickAreas(obj, layerIndex);
+						};
+						$(document).bind('mousemove', onMove);
+						$(document).bind('mouseup', onUp);
+					});
+
+					// Resize handler
+					resizeHandle.bind('mousedown', function(e) {
+						e.stopPropagation();
+						e.preventDefault();
+
+						var startX = e.pageX;
+						var startY = e.pageY;
+						var startW = area.w;
+						var startH = area.h;
+						var sw = $(obj).width();
+						var sh = $(obj).height();
+
+						var onMove = function(e) {
+							var dx = ((e.pageX - startX) / sw) * 100;
+							var dy = ((e.pageY - startY) / sh) * 100;
+							var newW = Math.max(5, Math.min(100 - area.x, startW + dx));
+							var newH = Math.max(5, Math.min(100 - area.y, startH + dy));
+							div.css({width: newW + '%', height: newH + '%'});
+							if (imagesData && imagesData[layerIndex] && imagesData[layerIndex].clickAreas && imagesData[layerIndex].clickAreas[areaIndex]) {
+								imagesData[layerIndex].clickAreas[areaIndex].w = Math.round(newW * 10) / 10;
+								imagesData[layerIndex].clickAreas[areaIndex].h = Math.round(newH * 10) / 10;
+							}
+						};
+						var onUp = function() {
+							$(document).unbind('mousemove', onMove);
+							$(document).unbind('mouseup', onUp);
+							self._saveClickAreas(obj, layerIndex);
+						};
+						$(document).bind('mousemove', onMove);
+						$(document).bind('mouseup', onUp);
+					});
+
+					div.append(resizeHandle);
+					$(obj).append(div);
+				})(i);
+			}
+		},
+
+		/**
+		 *	Remove edit-mode click area boxes from the stack element
+		 */
+		_clearClickAreaBoxes: function(obj) {
+			$(obj).find('[data-edit-area]').remove();
+		},
+
+		/**
+		 *	Save click areas for a layer to backend and update data attribute
+		 */
+		_saveClickAreas: function(obj, layerIndex) {
+			if (!imagesData) return;
+
+			// Update data-layer-clickareas attribute on stack element
+			var map = {};
+			for (var i = 0; i < imagesData.length; i++) {
+				var areas = imagesData[i] ? (imagesData[i].clickAreas || []) : [];
+				if (areas.length > 0) {
+					map[i] = areas;
+				}
+			}
+			var mapJson = JSON.stringify(map);
+			$(obj).attr('data-layer-clickareas', Object.keys(map).length > 0 ? mapJson : '');
+
+			$.glue.backend({
+				method: 'photostack.update_images',
+				name: $(obj).attr('id'),
+				images: JSON.stringify(imagesData)
+			});
 		},
 
 		/**
@@ -900,6 +1104,14 @@ $(document).ready(function() {
 		$.glue.photostack.addSticker(obj);
 	});
 	$.glue.contextmenu.register('photostack', 'photostack-sticker', elem);
+
+	// Add click area button
+	elem = $('<div style="width:24px;height:24px;line-height:24px;text-align:center;background:#ccc;border-radius:4px;font-size:14px;cursor:pointer;" title="add click area to current layer">&#8862;</div>');
+	$(elem).bind('click', function(e) {
+		var obj = $(this).data('owner');
+		$.glue.photostack.addClickArea(obj);
+	});
+	$.glue.contextmenu.register('photostack', 'photostack-clickarea', elem);
 
 	// Rotate focused layer button (drag up/down to rotate)
 	elem = $('<div class="photostack-rotate-btn" style="width:24px;height:24px;line-height:24px;text-align:center;background:#ccc;border-radius:4px;font-size:14px;cursor:not-allowed;opacity:0.5;" title="rotate focused layer (drag up/down) - select a layer first">↻</div>');
