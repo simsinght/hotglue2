@@ -123,6 +123,36 @@ function photostack_alter_render_early($args)
 		elem_append($elem, $layer);
 	}
 
+	// Render click area divs for each layer
+	$clickAreasMap = array();
+	foreach ($images as $index => $img) {
+		$areas = $img['clickAreas'] ?? array();
+		if (!is_array($areas) || count($areas) == 0) {
+			continue;
+		}
+		$clickAreasMap[$index] = $areas;
+		foreach ($areas as $areaIndex => $area) {
+			$areaDiv = elem('div');
+			elem_add_class($areaDiv, 'photostack-click-area');
+			elem_attr($areaDiv, 'data-layer', $index);
+			elem_attr($areaDiv, 'data-area-index', $areaIndex);
+			$x = floatval($area['x'] ?? 0);
+			$y = floatval($area['y'] ?? 0);
+			$w = floatval($area['w'] ?? 0);
+			$h = floatval($area['h'] ?? 0);
+			elem_css($areaDiv, 'position', 'absolute');
+			elem_css($areaDiv, 'left', $x.'%');
+			elem_css($areaDiv, 'top', $y.'%');
+			elem_css($areaDiv, 'width', $w.'%');
+			elem_css($areaDiv, 'height', $h.'%');
+			elem_css($areaDiv, 'display', 'none');
+			elem_append($elem, $areaDiv);
+		}
+	}
+	if (!empty($clickAreasMap)) {
+		elem_attr($elem, 'data-layer-clickareas', json_encode($clickAreasMap));
+	}
+
 	// Build layer objects map (layer index => array of object names)
 	$layerObjMap = array();
 	foreach ($images as $index => $img) {
