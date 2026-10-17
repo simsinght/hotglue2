@@ -182,9 +182,13 @@ $.glue.photostack = function() {
 			var imgData = imagesData ? imagesData[index] : null;
 
 			if (index < current) {
-				// Passed layer - use fade
 				var fade = imgData ? (imgData.fade !== undefined ? imgData.fade : 100) : 100;
-				if (fade == 0) {
+				var fadeRange = imgData ? (imgData.fadeRange || 0) : 0;
+				var dist = current - index;
+				if (fadeRange > 0 && dist > fadeRange) {
+					layer.css('opacity', '0');
+					layer.css('pointer-events', 'none');
+				} else if (fade == 0) {
 					layer.css('opacity', '0');
 					layer.css('pointer-events', 'none');
 				} else {
@@ -192,13 +196,15 @@ $.glue.photostack = function() {
 					layer.css('pointer-events', '');
 				}
 			} else if (index == current) {
-				// Current top layer
 				layer.css('opacity', '1');
 				layer.css('pointer-events', '');
 			} else {
-				// Not yet revealed - use ghost
 				var ghost = imgData ? (imgData.ghost || 0) : 0;
-				if (ghost > 0) {
+				var ghostRange = imgData ? (imgData.ghostRange || 0) : 0;
+				var dist = index - current;
+				if (ghostRange > 0 && dist > ghostRange) {
+					layer.css('opacity', '0');
+				} else if (ghost > 0) {
 					layer.css('opacity', ghost / 100);
 				} else {
 					layer.css('opacity', '0');
@@ -387,11 +393,16 @@ $.glue.photostack = function() {
 				var ghost = parseInt($(this).attr('data-ghost')) || 0;
 				var fade = parseInt($(this).attr('data-fade'));
 				if (isNaN(fade)) fade = 100;
+				var ghostRange = parseInt($(this).attr('data-ghost-range')) || 0;
+				var fadeRange = parseInt($(this).attr('data-fade-range')) || 0;
+				var dist = Math.abs(index - next);
 
 				if (index < next) {
-					// Passed layer - use fade
 					$(this).removeClass('photostack-ghost');
-					if (fade == 0) {
+					if (fadeRange > 0 && dist > fadeRange) {
+						$(this).css('opacity', '0');
+						$(this).css('pointer-events', 'none');
+					} else if (fade == 0) {
 						$(this).css('opacity', '0');
 						$(this).css('pointer-events', 'none');
 					} else {
@@ -399,13 +410,14 @@ $.glue.photostack = function() {
 						$(this).css('pointer-events', '');
 					}
 				} else if (index == next) {
-					// Current top layer
 					$(this).css('opacity', '1');
 					$(this).css('pointer-events', '');
 					$(this).removeClass('photostack-ghost');
 				} else {
-					// Not yet revealed - use ghost
-					if (ghost > 0) {
+					if (ghostRange > 0 && dist > ghostRange) {
+						$(this).css('opacity', '0');
+						$(this).css('pointer-events', 'none');
+					} else if (ghost > 0) {
 						$(this).css('opacity', ghost / 100);
 						$(this).addClass('photostack-ghost');
 						$(this).css('pointer-events', 'none');
@@ -428,15 +440,17 @@ $.glue.photostack = function() {
 			$(obj).find('.photostack-layer').each(function() {
 				var index = parseInt($(this).attr('data-index'));
 				var ghost = parseInt($(this).attr('data-ghost')) || 0;
+				var ghostRange = parseInt($(this).attr('data-ghost-range')) || 0;
 
 				if (index === 0) {
-					// Current top layer
 					$(this).css('opacity', '1');
 					$(this).css('pointer-events', '');
 					$(this).removeClass('photostack-ghost');
 				} else {
-					// Not yet revealed - use ghost
-					if (ghost > 0) {
+					if (ghostRange > 0 && index > ghostRange) {
+						$(this).css('opacity', '0');
+						$(this).css('pointer-events', 'none');
+					} else if (ghost > 0) {
 						$(this).css('opacity', ghost / 100);
 						$(this).addClass('photostack-ghost');
 						$(this).css('pointer-events', 'none');
@@ -708,8 +722,16 @@ $.glue.photostack = function() {
 				html += '<input type="number" class="photostack-ghost-input" value="' + (img.ghost || 0) + '" min="0" max="100" style="width:100%;padding:8px;box-sizing:border-box;font-size:14px;">';
 				html += '</div>';
 				html += '<div style="margin-bottom:12px;">';
+				html += '<label style="display:block;margin-bottom:4px;">Ghost range (0 = always show ghost, or # of layers ahead to show)</label>';
+				html += '<input type="number" class="photostack-ghost-range" value="' + (img.ghostRange || 0) + '" min="0" style="width:100%;padding:4px;box-sizing:border-box;">';
+				html += '</div>';
+				html += '<div style="margin-bottom:12px;">';
 				html += '<label style="display:block;margin-bottom:4px;">Fade opacity (0-100, after layer is passed)</label>';
 				html += '<input type="number" class="photostack-fade-input" value="' + (img.fade !== undefined ? img.fade : 100) + '" min="0" max="100" style="width:100%;padding:8px;box-sizing:border-box;font-size:14px;">';
+				html += '</div>';
+				html += '<div style="margin-bottom:12px;">';
+				html += '<label style="display:block;margin-bottom:4px;">Fade range (0 = always show fade, or # of layers past to show)</label>';
+				html += '<input type="number" class="photostack-fade-range" value="' + (img.fadeRange || 0) + '" min="0" style="width:100%;padding:4px;box-sizing:border-box;">';
 				html += '</div>';
 				html += '<div style="text-align:right;">';
 				html += '<button class="photostack-edit-cancel" style="padding:8px 16px;cursor:pointer;margin-right:8px;">Cancel</button>';
@@ -739,8 +761,10 @@ $.glue.photostack = function() {
 					img.scale = parseFloat($(dialog).find('.photostack-scale').val()) || 100;
 					img.rotation = parseFloat($(dialog).find('.photostack-rotation').val()) || 0;
 					img.ghost = parseInt($(dialog).find('.photostack-ghost-input').val()) || 0;
+					img.ghostRange = parseInt($(dialog).find('.photostack-ghost-range').val()) || 0;
 					img.fade = parseInt($(dialog).find('.photostack-fade-input').val());
 					if (isNaN(img.fade)) img.fade = 100;
+					img.fadeRange = parseInt($(dialog).find('.photostack-fade-range').val()) || 0;
 
 					$.glue.backend({
 						method: 'photostack.update_images',

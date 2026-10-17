@@ -66,7 +66,6 @@ function photostack_alter_render_early($args)
 		}
 		$url = base_url().$content_relative.'/'.$pagename.'/shared/'.rawurlencode($img['file']);
 
-		elem_css($layer, 'background-image', 'url('.$url.')');
 		elem_css($layer, 'background-size', 'contain');
 		elem_css($layer, 'background-repeat', 'no-repeat');
 		elem_css($layer, 'background-position', 'center');
@@ -79,6 +78,8 @@ function photostack_alter_render_early($args)
 		$rotation = floatval($img['rotation'] ?? 0);
 		$ghost = intval($img['ghost'] ?? 0);
 		$fade = intval($img['fade'] ?? 100); // default 100 = fully visible when passed
+		$ghostRange = intval($img['ghostRange'] ?? 0); // 0 = unlimited
+		$fadeRange = intval($img['fadeRange'] ?? 0); // 0 = unlimited
 
 		// Position and size relative to container
 		elem_css($layer, 'left', $offsetX.'%');
@@ -91,14 +92,21 @@ function photostack_alter_render_early($args)
 			elem_css($layer, 'transform', 'rotate('.$rotation.'deg)');
 		}
 
-		// Store ghost/fade values as data attributes for JS
+		// Store ghost/fade/range values as data attributes for JS
 		elem_attr($layer, 'data-ghost', $ghost);
 		elem_attr($layer, 'data-fade', $fade);
+		elem_attr($layer, 'data-ghost-range', $ghostRange);
+		elem_attr($layer, 'data-fade-range', $fadeRange);
 
-		// Determine visibility based on current index
+		// Determine visibility based on current index and range
+		$distance = abs($index - $current);
 		if ($index < $current) {
-			// This layer has been passed (newer layers on top)
-			if ($fade == 0) {
+			// This layer has been passed
+			if ($fadeRange > 0 && $distance > $fadeRange) {
+				// Beyond fade range - hide completely
+				elem_css($layer, 'opacity', '0');
+				elem_css($layer, 'pointer-events', 'none');
+			} else if ($fade == 0) {
 				elem_css($layer, 'opacity', '0');
 				elem_css($layer, 'pointer-events', 'none');
 			} else {
@@ -109,14 +117,32 @@ function photostack_alter_render_early($args)
 			elem_css($layer, 'opacity', '1');
 		} else {
 			// This layer is not yet revealed
-			if ($ghost > 0) {
-				// Show as ghost
+			if ($ghostRange > 0 && $distance > $ghostRange) {
+				// Beyond ghost range - hide completely
+				elem_css($layer, 'opacity', '0');
+				elem_css($layer, 'pointer-events', 'none');
+			} else if ($ghost > 0) {
 				elem_add_class($layer, 'photostack-ghost');
 				elem_css($layer, 'opacity', ($ghost / 100));
 			} else {
-				// Hide completely
 				elem_css($layer, 'opacity', '0');
 				elem_css($layer, 'pointer-events', 'none');
+			}
+		}
+
+		// Lazy load: only set background-image for nearby layers (view mode only)
+		if (!empty($args['edit'])) {
+			elem_css($layer, 'background-image', 'url('.$url.')');
+		} else {
+			if ($index >= $current) {
+				$loadRange = max($ghostRange, 1);
+			} else {
+				$loadRange = $fadeRange;
+			}
+			if ($distance <= $loadRange) {
+				elem_css($layer, 'background-image', 'url('.$url.')');
+			} else {
+				elem_attr($layer, 'data-bg', 'url('.$url.')');
 			}
 		}
 
@@ -305,6 +331,8 @@ function photostack_render_page_early($args)
 							var next = (current + 1) % count;
 							hideLayerObjects(getLayerObjIds(stack, current));
 							stack.setAttribute("data-photostack-current", next);
+							// Hide stickers for all layers, then show for visible ones
+							hideAllLayerObjects(stack);
 							var layers = stack.querySelectorAll(".photostack-layer");
 							for (var j = 0; j < layers.length; j++) {
 								var layer = layers[j];
@@ -312,10 +340,33 @@ function photostack_render_page_early($args)
 								var ghost = parseInt(layer.getAttribute("data-ghost")) || 0;
 								var fade = parseInt(layer.getAttribute("data-fade"));
 								if (isNaN(fade)) fade = 100;
+								var ghostRange = parseInt(layer.getAttribute("data-ghost-range")) || 0;
+								var fadeRange = parseInt(layer.getAttribute("data-fade-range")) || 0;
+								var dist = Math.abs(index - next);
+
+								// Lazy load/unload background images
+								var loadRange, unloadRange;
+								if (index >= next) {
+									loadRange = Math.max(ghostRange, 1);
+								} else {
+									loadRange = fadeRange;
+								}
+								if (dist <= loadRange) {
+									if (!layer.style.backgroundImage && layer.getAttribute("data-bg")) {
+										layer.style.backgroundImage = layer.getAttribute("data-bg");
+									}
+								} else {
+									if (layer.style.backgroundImage) {
+										if (!layer.getAttribute("data-bg")) layer.setAttribute("data-bg", layer.style.backgroundImage);
+										layer.style.backgroundImage = "";
+									}
+								}
 
 								if (index < next) {
-									// Passed layer - use fade
-									if (fade == 0) {
+									if (fadeRange > 0 && dist > fadeRange) {
+										layer.style.opacity = "0";
+										layer.style.pointerEvents = "none";
+									} else if (fade == 0) {
 										layer.style.opacity = "0";
 										layer.style.pointerEvents = "none";
 									} else {
@@ -323,12 +374,13 @@ function photostack_render_page_early($args)
 										layer.style.pointerEvents = "";
 									}
 								} else if (index == next) {
-									// Current top layer
 									layer.style.opacity = "1";
 									layer.style.pointerEvents = "";
 								} else {
-									// Not yet revealed - use ghost
-									if (ghost > 0) {
+									if (ghostRange > 0 && dist > ghostRange) {
+										layer.style.opacity = "0";
+										layer.style.pointerEvents = "none";
+									} else if (ghost > 0) {
 										layer.style.opacity = (ghost / 100).toString();
 										layer.style.pointerEvents = "none";
 									} else {
@@ -337,7 +389,14 @@ function photostack_render_page_early($args)
 									}
 								}
 							}
-							showLayerObjects(getLayerObjIds(stack, next));
+							// Show stickers for current and visible ghost/fade layers
+							var allLayers = stack.querySelectorAll(".photostack-layer");
+							for (var jj = 0; jj < allLayers.length; jj++) {
+								var li = parseInt(allLayers[jj].getAttribute("data-index"));
+								if (parseFloat(allLayers[jj].style.opacity) > 0) {
+									showLayerObjects(getLayerObjIds(stack, li));
+								}
+							}
 						});
 					})(stacks[i]);
 				}
