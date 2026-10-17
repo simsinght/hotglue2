@@ -90,7 +90,7 @@ function object_alter_render_late($args)
 				$a_attrs .= ' target="'.htmlspecialchars($target, ENT_COMPAT, 'UTF-8').'"';
 			}
 			if (!empty($obj['object-link-confirm'])) {
-				$a_attrs .= ' onclick="return confirm(\''.htmlspecialchars($obj['object-link-confirm'], ENT_QUOTES, 'UTF-8').'\')"';
+				$a_attrs .= ' onclick="return confirm('.htmlspecialchars(json_encode($obj['object-link-confirm']), ENT_QUOTES, 'UTF-8').')"';
 			}
 			$html = '<a '.$a_attrs.'>'."\n\t".str_replace("\n", "\n\t", $html)."\n".'</a>'."\n";
 			return true;
