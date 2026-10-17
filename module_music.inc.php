@@ -610,7 +610,7 @@ function music_render_page_early($args)
 									artist: track.artist,
 									artwork: (function() {
 									if (!track.coverUrl) return [];
-									var u = track.coverUrl.indexOf("://") === -1 ? window.location.origin + track.coverUrl : track.coverUrl;
+									var u = track.coverUrl.indexOf("://") === -1 ? new URL(track.coverUrl, window.location.href).href : track.coverUrl;
 									return [
 										{ src: u, sizes: "96x96" },
 										{ src: u, sizes: "256x256" },
@@ -865,7 +865,7 @@ function music_render_page_early($args)
 						// Set initial Media Session metadata
 						if ("mediaSession" in navigator && tracks[currentTrack]) {
 							var initTrack = tracks[currentTrack];
-							var initUrl = initTrack.coverUrl ? (initTrack.coverUrl.indexOf("://") === -1 ? window.location.origin + initTrack.coverUrl : initTrack.coverUrl) : "";
+							var initUrl = initTrack.coverUrl ? (initTrack.coverUrl.indexOf("://") === -1 ? new URL(initTrack.coverUrl, window.location.href).href : initTrack.coverUrl) : "";
 							navigator.mediaSession.metadata = new MediaMetadata({
 								title: initTrack.title,
 								artist: initTrack.artist,

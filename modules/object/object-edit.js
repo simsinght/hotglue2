@@ -293,4 +293,68 @@ $(document).ready(function() {
 		$.glue.canvas.update();
 	});
 	$.glue.contextmenu.register('object', 'object-delete', elem, 20);
+
+	//
+	// Move child objects (alt text, stickers) when parent (journal/photostack) is moved
+	//
+	function getChildIds(obj) {
+		var ids = [];
+		// Journal: alt objects + page objects
+		var altMap = $(obj).attr('data-alt-objects');
+		if (altMap) {
+			try {
+				var am = JSON.parse(altMap);
+				for (var k in am) {
+					for (var i = 0; i < am[k].length; i++) ids.push(am[k][i]);
+				}
+			} catch(e) {}
+		}
+		var pageMap = $(obj).attr('data-page-objects');
+		if (pageMap) {
+			try {
+				var pm = JSON.parse(pageMap);
+				for (var k in pm) {
+					for (var i = 0; i < pm[k].length; i++) ids.push(pm[k][i]);
+				}
+			} catch(e) {}
+		}
+		// Photostack: layer objects
+		var layerMap = $(obj).attr('data-layer-objects');
+		if (layerMap) {
+			try {
+				var lm = JSON.parse(layerMap);
+				for (var k in lm) {
+					for (var i = 0; i < lm[k].length; i++) ids.push(lm[k][i]);
+				}
+			} catch(e) {}
+		}
+		return ids;
+	}
+
+	$('.journal, .photostack').live('glue-movestart', function(e) {
+		var p = $(this).position();
+		$(this).data('_movestart-left', p.left);
+		$(this).data('_movestart-top', p.top);
+	});
+
+	$('.journal, .photostack').live('glue-movestop', function(e) {
+		var startLeft = $(this).data('_movestart-left');
+		var startTop = $(this).data('_movestart-top');
+		if (startLeft === undefined || startTop === undefined) return;
+		var p = $(this).position();
+		var dx = p.left - startLeft;
+		var dy = p.top - startTop;
+		if (dx === 0 && dy === 0) return;
+
+		var ids = getChildIds(this);
+		for (var i = 0; i < ids.length; i++) {
+			var el = document.getElementById(ids[i]);
+			if (!el) continue;
+			var oldLeft = parseFloat($(el).css('left')) || 0;
+			var oldTop = parseFloat($(el).css('top')) || 0;
+			$(el).css('left', (oldLeft + dx) + 'px');
+			$(el).css('top', (oldTop + dy) + 'px');
+			$.glue.object.save(el);
+		}
+	});
 });

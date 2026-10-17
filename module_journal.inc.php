@@ -92,7 +92,7 @@ function journal_alter_render_early($args)
 		elem_css($pageElem, 'transform-style', 'preserve-3d');
 
 		$isCover = !empty($page['cover']);
-		$isNearby = abs($index - $current) <= 1;
+		$isNearby = !empty($args['edit']) || abs($index - $current) <= 1;
 
 		// Create left half (unfolds when arriving - "back of turned page")
 		$leftHalf = elem('div');

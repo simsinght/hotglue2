@@ -1080,6 +1080,7 @@ $.glue.sel = function()
 			}
 			// prevent window scrolling
 			return false;
+		/* disabled: select all / deselect / invert — janky with newer modules
 		} else if ((e.metaKey || e.ctrlKey) && e.which == 65) {
 			// select all objects not locked objects
 			// selected locked objects will be unselected
@@ -1103,6 +1104,7 @@ $.glue.sel = function()
 				$.glue.sel.select($(this));
 			});
 			return false;
+		*/
 		} else if ((e.metaKey || e.ctrlKey) && e.which == 90) {
 			// cmd+z (Mac) or ctrl+z: show revisions browser to suggest using revisions in place of undo
 			// Must be on keydown to prevent browser's default undo action
