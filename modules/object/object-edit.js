@@ -113,29 +113,77 @@ $(document).ready(function() {
 				if (data['#data']['object-target'] !== undefined) {
 					old_target = data['#data']['object-target'];
 				}
+				var old_confirm = '';
+				if (data['#data']['object-link-confirm'] !== undefined) {
+					old_confirm = data['#data']['object-link-confirm'];
+				}
 				old_linkdata = (old_target == '') ? old_link : old_link + ' ' + old_target;
-				var linkdata = prompt('Enter link (e.g. http://hotglue.me or pagename or anchor name).\nTo add target specify its name after a space (e.g. http://hotglue.me _blank)', old_linkdata);
-				if (linkdata === null || linkdata == old_link + ' ' + old_target) {
-					return;
-				}
-				t = linkdata.split(' '); // if there is no space split() returns the string
-				link = t[0];
-				target = t[1];
-				
-				if (link == undefined) {
-					$.glue.backend({ method: 'glue.object_remove_attr', name: $(obj).attr('id'), attr: 'object-link' });
-				} else {
-					// set link
-					$.glue.backend({ method: 'glue.update_object', name: $(obj).attr('id'), 'object-link': link });
-					if (target !== undefined) {
-						// set target
-						$.glue.backend({ method: 'glue.update_object', name: $(obj).attr('id'), 'object-target': target });
+
+				var html = '<div style="background:#fff;padding:20px;border-radius:5px;min-width:360px;">';
+				html += '<div style="margin-bottom:14px;">';
+				html += '<label style="display:block;margin-bottom:4px;font-size:13px;color:#666;">Link URL (or page name)</label>';
+				html += '<input type="text" class="link-url" value="'+old_link.replace(/"/g, '&quot;')+'" placeholder="e.g. http://hotglue.me or pagename" style="width:100%;padding:6px;box-sizing:border-box;border:1px solid #ccc;font-family:monospace;">';
+				html += '</div>';
+				html += '<div style="margin-bottom:14px;">';
+				html += '<label style="display:block;margin-bottom:4px;font-size:13px;color:#666;">Target (optional)</label>';
+				html += '<input type="text" class="link-target" value="'+old_target.replace(/"/g, '&quot;')+'" placeholder="e.g. _blank" style="width:100%;padding:6px;box-sizing:border-box;border:1px solid #ccc;font-family:monospace;">';
+				html += '</div>';
+				html += '<div style="margin-bottom:14px;">';
+				html += '<label style="display:block;margin-bottom:4px;font-size:13px;color:#666;">Confirm message (optional)</label>';
+				html += '<input type="text" class="link-confirm" value="'+old_confirm.replace(/"/g, '&quot;')+'" placeholder="e.g. Are you sure you want to leave this page?" style="width:100%;padding:6px;box-sizing:border-box;border:1px solid #ccc;font-family:monospace;">';
+				html += '</div>';
+				html += '<div style="text-align:right;">';
+				html += '<button class="link-cancel-btn" style="padding:8px 16px;cursor:pointer;margin-right:8px;">Cancel</button>';
+				html += '<button class="link-save-btn" style="padding:8px 16px;cursor:pointer;">Save</button>';
+				html += '</div></div>';
+
+				var overlay = $('<div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10000;"></div>');
+				var dialog = $(html);
+				$(overlay).append(dialog);
+				$('body').append(overlay);
+
+				$(dialog).bind('mousedown click', function(e) { e.stopPropagation(); });
+
+				// Cancel
+				$(dialog).find('.link-cancel-btn').click(function(e) {
+					e.stopPropagation();
+					$(overlay).remove();
+				});
+				$(overlay).click(function(e) {
+					if (e.target === this) $(overlay).remove();
+				});
+
+				// Save
+				$(dialog).find('.link-save-btn').click(function(e) {
+					e.stopPropagation();
+					var link = $(dialog).find('.link-url').val().trim();
+					var target = $(dialog).find('.link-target').val().trim();
+					var confirmMsg = $(dialog).find('.link-confirm').val().trim();
+					var objId = $(obj).attr('id');
+
+					if (link === '') {
+						// remove link and related attrs
+						$.glue.backend({ method: 'glue.object_remove_attr', name: objId, attr: 'object-link' });
+						$.glue.backend({ method: 'glue.object_remove_attr', name: objId, attr: 'object-target' });
+						$.glue.backend({ method: 'glue.object_remove_attr', name: objId, attr: 'object-link-confirm' });
+					} else {
+						$.glue.backend({ method: 'glue.update_object', name: objId, 'object-link': link });
+						// target
+						if (target !== '') {
+							$.glue.backend({ method: 'glue.update_object', name: objId, 'object-target': target });
+						} else if (old_target !== '') {
+							$.glue.backend({ method: 'glue.object_remove_attr', name: objId, attr: 'object-target' });
+						}
+						// confirm message
+						if (confirmMsg !== '') {
+							$.glue.backend({ method: 'glue.update_object', name: objId, 'object-link-confirm': confirmMsg });
+						} else if (old_confirm !== '') {
+							$.glue.backend({ method: 'glue.object_remove_attr', name: objId, attr: 'object-link-confirm' });
+						}
 					}
-				}
-				if (old_target !== '' && (target == '' || target == undefined)) {
-					// delete target
-					$.glue.backend({ method: 'glue.object_remove_attr', name: $(obj).attr('id'), attr: 'object-target' });
-				}
+
+					$(overlay).remove();
+				});
 			}
 		}, false);
 	});

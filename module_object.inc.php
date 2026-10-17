@@ -68,6 +68,10 @@ function object_alter_render_late($args)
 			}
 			// resolve any aliases
 			$link = resolve_aliases($link, $obj['name']);
+			// auto-prepend https:// for bare domain URLs
+			if (!is_url($link) && preg_match('/^(www\.)?[a-z0-9]([a-z0-9-]*\.)+[a-z]{2,}/i', $link)) {
+				$link = 'https://'.$link;
+			}
 			if (!is_url($link) && substr($link, 0, 1) != '#') {
 				// add base url for relative links that are not directed towards anchors
 				if (SHORT_URLS) {
@@ -80,12 +84,15 @@ function object_alter_render_late($args)
 			if (substr($html, -1) == "\n") {
 				$html = substr($html, 0, -1);
 			}
-			// if target is specified use it in link
+			// build <a> attributes
+			$a_attrs = 'href="'.htmlspecialchars($link, ENT_COMPAT, 'UTF-8').'"';
 			if (isset($target)) {
-				$html = '<a href="'.htmlspecialchars($link, ENT_COMPAT, 'UTF-8').'" target="'.htmlspecialchars($target, ENT_COMPAT, 'UTF-8').'">'."\n\t".str_replace("\n", "\n\t", $html)."\n".'</a>'."\n";
-			} else {
-				$html = '<a href="'.htmlspecialchars($link, ENT_COMPAT, 'UTF-8').'">'."\n\t".str_replace("\n", "\n\t", $html)."\n".'</a>'."\n";
+				$a_attrs .= ' target="'.htmlspecialchars($target, ENT_COMPAT, 'UTF-8').'"';
 			}
+			if (!empty($obj['object-link-confirm'])) {
+				$a_attrs .= ' onclick="return confirm(\''.htmlspecialchars($obj['object-link-confirm'], ENT_QUOTES, 'UTF-8').'\')"';
+			}
+			$html = '<a '.$a_attrs.'>'."\n\t".str_replace("\n", "\n\t", $html)."\n".'</a>'."\n";
 			return true;
 		}
 	}
